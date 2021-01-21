@@ -6,7 +6,7 @@ For now, I'm just playing around things I'm considering using.
 
 ## Possible Paths Moving Forward
 
-Option 1: A template Jupyter notebook.
+Option 1: A template Jupyter notebook, and my own relevant tools for financial analysis.
 
 Option 2: A local web app.
 

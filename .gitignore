@@ -1,3 +1,9 @@
+# Project-specific
+config.json
+config.json.backup
+
+##########################################################################################
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

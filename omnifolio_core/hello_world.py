@@ -11,10 +11,12 @@ Some test code for connecting a Jupyter notebook with Python source files.
 import logging
 import requests
 
+from .config import get_config
+
 logger = logging.getLogger(__name__)
 
 def run():
-    logger.info("Hello, world!")
+    print(str(get_config()))
 
     params = {
         "function": "TIME_SERIES_INTRADAY",
@@ -23,5 +25,6 @@ def run():
         "apikey": "demo",
     }
     res = requests.get("https://www.alphavantage.co/query", params=params)
+
     return res.text
 
