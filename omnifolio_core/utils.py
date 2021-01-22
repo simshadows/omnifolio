@@ -32,7 +32,7 @@ def mkdir_recursive(relfilepath):
 def fwrite_json(relfilepath, data=None):
     mkdir_recursive(relfilepath)
     with open(relfilepath, encoding=_ENCODING, mode="w") as f:
-        f.write(json.dumps(data, sort_keys=True, indent=3))
+        f.write(json.dumps(data, sort_keys=True, indent=4))
     return
 
 def fread_json(relfilepath):

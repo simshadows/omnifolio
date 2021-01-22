@@ -19,17 +19,21 @@ _BACKUP_PATH = "config.json.backup"
 
 _DEFAULT_CONFIG = {
     "alpha_vantage_api_key": "",
+    "iex_cloud_api_key": "",
+    "rapidapi_api_key": "",
 }
 
 _CONFIG_TYPES = {
     "alpha_vantage_api_key": str,
+    "iex_cloud_api_key": str,
+    "rapidapi_api_key": str,
 }
 
 logger = logging.getLogger(__name__)
 
 def get_config():
     if os.path.isfile(_CONFIG_PATH):
-        logger.info("Reading configuration file.")
+        logger.debug("Reading configuration file.")
         data = fread_json(_CONFIG_PATH)
         backup = deepcopy(data)
 
@@ -56,9 +60,9 @@ def get_config():
 
         return data
     else:
-        logger.info("No configuration file found.")
-        logger.info("Creating a new configuration file.")
+        logger.debug("No configuration file found.")
+        logger.debug("Creating a new configuration file.")
         fwrite_json(_CONFIG_PATH, data=_DEFAULT_CONFIG)
-        logger.info("New configuration file saved.")
+        logger.debug("New configuration file saved.")
         return _DEFAULT_CONFIG
 
