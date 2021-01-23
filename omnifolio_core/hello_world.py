@@ -15,6 +15,7 @@ import requests
 
 from .config import get_config
 from .utils import fwrite_json, fread_json
+from .market_data_providers.rapidapi_apidojo_yahoo_finance import RAADYahooFinance
 
 logger = logging.getLogger(__name__)
 
@@ -39,20 +40,37 @@ def run():
     #data = json.loads(res.text)
     #print(res.status_code)
 
-    url = "https://apidojo-yahoo-finance-v1.p.rapidapi.com/stock/v3/get-historical-data"
-    params = {
-        "symbol": "ESPO.AX",
-    }
-    headers = {
-        "x-rapidapi-key": config["rapidapi_api_key"],
-        "x-rapidapi-host": "apidojo-yahoo-finance-v1.p.rapidapi.com",
-    }
-    res = requests.get(url, params=params, headers=headers)
-    data = json.loads(res.text)
-    print(res.status_code)
+    #url = "https://apidojo-yahoo-finance-v1.p.rapidapi.com/stock/v3/get-historical-data"
+    #params = {
+    #    "symbol": "ESPO.AX",
+    #}
+    #headers = {
+    #    "x-rapidapi-key": config["rapidapi_api_key"],
+    #    "x-rapidapi-host": "apidojo-yahoo-finance-v1.p.rapidapi.com",
+    #}
+    #res = requests.get(url, params=params, headers=headers)
+    ##print(res.text)
+    #print(res.status_code)
+    #data = json.loads(res.text)
 
 
-    fwrite_json("tmp", data=data)
+    #url = "https://apidojo-yahoo-finance-v1.p.rapidapi.com/stock/v3/get-historical-data"
+    #params = {
+    #    "symbol": "TSLA",
+    #}
+    #headers = {
+    #    "x-rapidapi-key": config["rapidapi_api_key"],
+    #    "x-rapidapi-host": "apidojo-yahoo-finance-v1.p.rapidapi.com",
+    #}
+    #res = requests.get(url, params=params, headers=headers)
+    ##print(res.text)
+    #print(res.status_code)
+    #data = json.loads(res.text)
+
+    #fwrite_json("tmp.txt", data=data)
+
+    provider = RAADYahooFinance(config)
+    data = provider.stock_timeseries_daily_pandas(["TSLA"])
 
     return data
 

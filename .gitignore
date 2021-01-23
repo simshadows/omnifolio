@@ -1,7 +1,7 @@
 # Project-specific
 config.json
 config.json.backup
-tmp
+tmp.txt
 
 ##########################################################################################
 
