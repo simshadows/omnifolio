@@ -15,7 +15,7 @@ import requests
 
 from .config import get_config
 from .utils import fwrite_json, fread_json
-from .market_data_providers.rapidapi_apidojo_yahoo_finance import RAADYahooFinance
+from .market_data_aggregator import MarketDataAggregator
 
 logger = logging.getLogger(__name__)
 
@@ -69,8 +69,8 @@ def run():
 
     #fwrite_json("tmp.txt", data=data)
 
-    provider = RAADYahooFinance(config)
-    data = provider.stock_timeseries_daily_pandas(["TSLA"])
+    aggregator = MarketDataAggregator(config)
+    data = aggregator.stock_timeseries_daily_pandas(["TSLA"])
 
     return data
 

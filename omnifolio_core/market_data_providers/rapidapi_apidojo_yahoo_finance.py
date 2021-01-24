@@ -18,18 +18,23 @@ import logging
 from requests import get
 
 from ..exceptions import NoAPIKeyProvided
+from ..market_data_containers import (DayPrices,
+                                      DayEvents,
+                                      StockTimeSeriesDailyResult)
 from ..market_data_provider import MarketDataProvider
 
 logger = logging.getLogger(__name__)
 
 class RAADYahooFinance(MarketDataProvider):
 
+    _DATA_SOURCE_STR = "RAADYahooFinance"
+
     def __init__(self, config):
         self._api_key = config["rapidapi_api_key"]
         return
 
     def get_trust_value(self):
-        return self.GENERALLY_UNTRUSTED
+        return self.GENERALLY_UNTRUSTED - self.CURRENCY_GUESS_DEDUCTION - self.PRECISION_GUESS_DEDUCTION
 
     def stock_timeseries_daily(self, symbols_list):
         if len(self._api_key) == 0:
@@ -63,6 +68,7 @@ class RAADYahooFinance(MarketDataProvider):
             "x-rapidapi-host": "apidojo-yahoo-finance-v1.p.rapidapi.com",
         }
         res = get(url, params=params, headers=headers)
+        curr_time = datetime.datetime.utcnow()
 
         if res.status_code != 200:
             logger.warning(f"API call for symbol '{symbol}' returned status {res.status_code}.")
@@ -84,12 +90,17 @@ class RAADYahooFinance(MarketDataProvider):
                 continue
             elif {"date", "open", "high", "low", "close", "volume", "adjclose"} != set(d):
                 logger.debug(f"Unexpected set of keys. Full key list: {str(set(d))}.")
-            to_append = MarketDataProvider.DayPrices(
+            to_append = DayPrices(
                     date=datetime.date.fromtimestamp(d["date"] + extra_data_dict["timeZone"]["gmtOffset"]),
+
+                    data_source=self._DATA_SOURCE_STR,
+                    data_trust_value=self.get_trust_value(),
+                    data_collection_time=curr_time,
 
                     open=int(round(d["open"] * 1000, 0)),
                     high=int(round(d["high"] * 1000, 0)),
                     low=int(round(d["low"] * 1000, 0)),
+                    close=int(round(d["close"] * 1000, 0)),
                     adjusted_close=int(round(d["adjclose"] * 1000, 0)),
 
                     volume=d["volume"],
@@ -104,8 +115,12 @@ class RAADYahooFinance(MarketDataProvider):
             if d["type"] == "SPLIT":
                 if {"data", "date", "denominator", "numerator", "splitRatio", "type"} != set(d):
                     logger.debug(f"Unexpected set of keys. Full key list: {str(set(d))}.")
-                to_append = MarketDataProvider.DayEvents(
+                to_append = DayEvents(
                         date=datetime.date.fromtimestamp(d["date"] + extra_data_dict["timeZone"]["gmtOffset"]),
+
+                        data_source=self._DATA_SOURCE_STR,
+                        data_trust_value=self.get_trust_value(),
+                        data_collection_time=curr_time,
 
                         dividend=0,
                         split_factor_numerator=d["numerator"],
@@ -115,7 +130,7 @@ class RAADYahooFinance(MarketDataProvider):
             else:
                 logger.debug(f"Unrecognized type '{d['type']}'. Ignoring.")
 
-        to_return = MarketDataProvider.StockTimeSeriesDailyResult(
+        to_return = StockTimeSeriesDailyResult(
                 symbol=symbol,
                 prices_list=prices_list,
                 events_list=events_list,

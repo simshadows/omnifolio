@@ -27,6 +27,10 @@ class MarketDataProvider(ABC):
     GENERALLY_UNTRUSTED = -200
     VERY_UNTRUSTED      = -300
 
+    # Further deductions to trust value
+    CURRENCY_GUESS_DEDUCTION = 2
+    PRECISION_GUESS_DEDUCTION = 1
+
     @abstractmethod
     def get_trust_value(self):
         """
@@ -49,36 +53,6 @@ class MarketDataProvider(ABC):
 
     ######################################################################################
 
-    DayPrices = namedtuple("DayPrices", [
-            "date",
-
-            "open",           # int (Must be divided by price_denominator to get actual price.)
-            "high",           # int (Must be divided by price_denominator to get actual price.)
-            "low",            # int (Must be divided by price_denominator to get actual price.)
-            #"close",         # We will assume we only care about adjusted close prices for now.
-            "adjusted_close", # int (Must be divided by price_denominator to get actual price.)
-
-            "volume", # int
-
-            "unit",              # str (E.g. "USD")
-            "price_denominator", # int (All prices must be divided by price_denominator to get the actual price.)
-        ])
-
-    DayEvents = namedtuple("DayEvents", [
-            "date",
-
-            "dividend",                 # int (Must be divided by price_denominator to get actual price.)
-            "split_factor_numerator",   # int
-            "split_factor_denominator", # int
-        ])
-
-    StockTimeSeriesDailyResult = namedtuple("StockTimeSeriesDailyResult", [
-            "symbol",          # str
-            "prices_list",     # list(DayPrices)
-            "events_list",     # list(DayEvents)
-            "extra_data_dict", # dict
-        ])
-
     @abstractmethod
     def stock_timeseries_daily(self, symbols_list):
         """
@@ -97,17 +71,4 @@ class MarketDataProvider(ABC):
             the history of the symbol.
         """
         raise NotImplementedError
-
-    def stock_timeseries_daily_pandas(self, symbols_list):
-        data = self.stock_timeseries_daily(symbols_list)
-
-        to_return = {}
-        for (symbol, v) in data.items():
-            to_return[symbol] = {
-                    "symbol": v.symbol,
-                    "prices": pd.DataFrame(v.prices_list),
-                    "events": pd.DataFrame(v.events_list),
-                    "extra_data_dict": v.extra_data_dict
-                }
-        return to_return
 
