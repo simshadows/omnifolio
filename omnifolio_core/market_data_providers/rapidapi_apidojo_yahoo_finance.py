@@ -14,6 +14,7 @@ or Yahoo Finance).
 import json
 import datetime
 import logging
+from collections import OrderedDict
 
 from requests import get
 
@@ -22,6 +23,7 @@ from ..market_data_containers import (DayPrices,
                                       DayEvents,
                                       StockTimeSeriesDailyResult)
 from ..market_data_provider import MarketDataProvider
+from ..utils import fwrite_json, fread_json
 
 logger = logging.getLogger(__name__)
 
@@ -71,12 +73,13 @@ class RAADYahooFinance(MarketDataProvider):
         if res.status_code != 200:
             logger.warning(f"API call for symbol '{symbol}' returned status {res.status_code}.")
 
-        # TODO: Better error handling for easy error triage?
-        #print(res.text)
-
         raw_data = json.loads(res.text)
 
-        extra_data_dict = {
+        # TODO: Better error handling for easy error triage?
+        #print(res.text)
+        #fwrite_json("tmp.txt", data=raw_data)
+
+        extra_data = {
                 "firstTradeDate": raw_data["firstTradeDate"],
                 "timeZone": raw_data["timeZone"],
             }
@@ -84,13 +87,17 @@ class RAADYahooFinance(MarketDataProvider):
         prices_list = []
         for d in raw_data["prices"]:
             if "adjclose" not in d:
-                logger.debug(f"Encountered a missing 'adjclose' key in the price list. Keys are: {str(set(d))}.")
+                logger.debug(
+                        f"Encountered a missing 'adjclose' key in the price list. " \
+                        f"Skipping this record. Keys are: {str(set(d))}."
+                    )
                 continue
             elif {"date", "open", "high", "low", "close", "volume", "adjclose"} != set(d):
                 logger.debug(f"Unexpected set of keys. Full key list: {str(set(d))}.")
-            to_append = DayPrices(
-                    date=datetime.date.fromtimestamp(d["date"] + extra_data_dict["timeZone"]["gmtOffset"]),
 
+            date = datetime.date.fromtimestamp(d["date"] + extra_data["timeZone"]["gmtOffset"])
+
+            data_point = DayPrices(
                     data_source=self.get_provider_name(),
                     data_trust_value=self.get_trust_value(),
                     data_collection_time=curr_time,
@@ -106,16 +113,17 @@ class RAADYahooFinance(MarketDataProvider):
                     unit="unknown",
                     price_denominator=1000,
                 )
-            prices_list.append(to_append)
+            prices_list.append((date, data_point, ))
 
         events_list = []
         for d in raw_data["eventsData"]:
             if d["type"] == "SPLIT":
                 if {"data", "date", "denominator", "numerator", "splitRatio", "type"} != set(d):
                     logger.debug(f"Unexpected set of keys. Full key list: {str(set(d))}.")
-                to_append = DayEvents(
-                        date=datetime.date.fromtimestamp(d["date"] + extra_data_dict["timeZone"]["gmtOffset"]),
 
+                date = datetime.date.fromtimestamp(d["date"] + extra_data["timeZone"]["gmtOffset"])
+
+                data_point = DayEvents(
                         data_source=self.get_provider_name(),
                         data_trust_value=self.get_trust_value(),
                         data_collection_time=curr_time,
@@ -124,15 +132,33 @@ class RAADYahooFinance(MarketDataProvider):
                         split_factor_numerator=d["numerator"],
                         split_factor_denominator=d["denominator"],
                     )
-                events_list.append(to_append)
+                events_list.append((date, data_point, ))
             else:
                 logger.debug(f"Unrecognized type '{d['type']}'. Ignoring.")
 
+        prices_list.sort(key=lambda x : x[0])
+        events_list.sort(key=lambda x : x[0])
+
+        # We need to reject the latest data point due to date unreliability.
+
+        prices_latest_date = prices_list[-1][0]
+        events_latest_date = events_list[-1][0]
+        date_to_reject = prices_latest_date if (prices_latest_date > events_latest_date) else events_latest_date
+
+        prices=OrderedDict(prices_list)
+        events=OrderedDict(events_list)
+        if date_to_reject in prices:
+            logger.debug(f"Rejecting date {date_to_reject} in the prices dict.")
+            del prices[date_to_reject]
+        if date_to_reject in events:
+            logger.debug(f"Rejecting date {date_to_reject} in the events dict.")
+            del events[date_to_reject]
+
         to_return = StockTimeSeriesDailyResult(
                 symbol=symbol,
-                prices_list=prices_list,
-                events_list=events_list,
-                extra_data_dict=extra_data_dict,
+                prices=prices,
+                events=events,
+                extra_data=extra_data,
             )
         return to_return
 

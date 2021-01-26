@@ -54,9 +54,13 @@ class MarketDataAggregator:
         for (symbol, v) in data.items():
             to_return[symbol] = {
                     "symbol": v.symbol,
-                    "prices": pd.DataFrame(v.prices_list),
-                    "events": pd.DataFrame(v.events_list),
-                    "extra_data_dict": v.extra_data_dict
+                    "prices": pd.DataFrame(({"date": k} | v._asdict()) for (k, v) in v.prices.items()),
+                    "events": pd.DataFrame(({"date": k} | v._asdict()) for (k, v) in v.events.items()),
+                    "extra_data": v.extra_data,
                 }
+            to_return[symbol]["prices"].sort_values("date")
+            to_return[symbol]["events"].sort_values("date")
+
+
         return to_return
 

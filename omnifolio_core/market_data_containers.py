@@ -16,11 +16,6 @@ from collections import namedtuple
 
 DayPrices = namedtuple("DayPrices", [
         #
-        # This is the date in which the data is applicable for.
-        #
-        "date",                 # datetime.date
-
-        #
         # Metadata on where this data is from, and the time it was pulled from the server/source.
         #
         "data_source",          # str
@@ -49,11 +44,6 @@ DayPrices = namedtuple("DayPrices", [
     ])
 
 DayEvents = namedtuple("DayEvents", [
-        #
-        # This is the date in which the data is applicable for.
-        #
-        "date",
-
         # Metadata on where this data is from, and the time it was pulled from the server/source.
         #
         "data_source",          # str
@@ -69,9 +59,14 @@ DayEvents = namedtuple("DayEvents", [
     ])
 
 StockTimeSeriesDailyResult = namedtuple("StockTimeSeriesDailyResult", [
-        "symbol",          # str
-        "prices_list",     # list(DayPrices)
-        "events_list",     # list(DayEvents)
-        "extra_data_dict", # dict
+        "symbol",     # str
+
+        "prices",     # {datetime.date: DayPrices}
+                      # The date is the day in which the particular data point is applicable for.
+
+        "events",     # {datetime.date: DayEvents}
+                      # The date is the day in which the particular data point is applicable for.
+
+        "extra_data", # dict
     ])
 
