@@ -21,12 +21,16 @@ _DEFAULT_CONFIG = {
     "alpha_vantage_api_key": "",
     "iex_cloud_api_key": "",
     "rapidapi_api_key": "",
+    "user_data_path": "./sample_user_data",
+    "market_data_store_path": "./sample_user_data/market_data_store",
 }
 
 _CONFIG_TYPES = {
     "alpha_vantage_api_key": str,
     "iex_cloud_api_key": str,
     "rapidapi_api_key": str,
+    "user_data_path": str,
+    "market_data_store_path": str,
 }
 
 logger = logging.getLogger(__name__)

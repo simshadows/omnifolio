@@ -51,6 +51,12 @@ class MarketDataProvider(ABC):
         """
         raise NotImplementedError
 
+    def get_provider_name(self):
+        """
+        Get a string that uniquely identifies the particular provider class.
+        """
+        return type(self).__name__ # We just return the class name.
+
     ######################################################################################
 
     @abstractmethod

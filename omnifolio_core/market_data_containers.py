@@ -70,8 +70,8 @@ DayEvents = namedtuple("DayEvents", [
 
 StockTimeSeriesDailyResult = namedtuple("StockTimeSeriesDailyResult", [
         "symbol",          # str
-        "prices_list",     # list(MarketDataStore.DayPrices)
-        "events_list",     # list(MarketDataStore.DayEvents)
+        "prices_list",     # list(DayPrices)
+        "events_list",     # list(DayEvents)
         "extra_data_dict", # dict
     ])
 

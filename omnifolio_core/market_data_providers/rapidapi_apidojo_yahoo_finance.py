@@ -27,8 +27,6 @@ logger = logging.getLogger(__name__)
 
 class RAADYahooFinance(MarketDataProvider):
 
-    _DATA_SOURCE_STR = "RAADYahooFinance"
-
     def __init__(self, config):
         self._api_key = config["rapidapi_api_key"]
         return
@@ -93,7 +91,7 @@ class RAADYahooFinance(MarketDataProvider):
             to_append = DayPrices(
                     date=datetime.date.fromtimestamp(d["date"] + extra_data_dict["timeZone"]["gmtOffset"]),
 
-                    data_source=self._DATA_SOURCE_STR,
+                    data_source=self.get_provider_name(),
                     data_trust_value=self.get_trust_value(),
                     data_collection_time=curr_time,
 
@@ -118,7 +116,7 @@ class RAADYahooFinance(MarketDataProvider):
                 to_append = DayEvents(
                         date=datetime.date.fromtimestamp(d["date"] + extra_data_dict["timeZone"]["gmtOffset"]),
 
-                        data_source=self._DATA_SOURCE_STR,
+                        data_source=self.get_provider_name(),
                         data_trust_value=self.get_trust_value(),
                         data_collection_time=curr_time,
 

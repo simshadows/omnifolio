@@ -8,21 +8,23 @@ License:  GNU Affero General Public License v3 (AGPL-3.0)
 Defines the MarketDataAggregator class, which aggregates and stores data provided by MarketDataProvider.
 """
 
+import logging
 from collections import namedtuple
-from abc import ABC, abstractmethod
 
 import pandas as pd
 
 from .market_data_providers.rapidapi_apidojo_yahoo_finance import RAADYahooFinance
+
+logger = logging.getLogger(__name__)
 
 class MarketDataAggregator:
 
     def __init__(self, config):
         self._config = config
 
-        self._providers = {
-                "RAADYahooFinance": RAADYahooFinance(config),
-            }
+        self._providers = [
+                RAADYahooFinance(config),
+            ]
         return
 
     ######################################################################################
@@ -43,7 +45,7 @@ class MarketDataAggregator:
             in symbols_list), and the value is a StockTimeSeriesDailyResult object that details
             the history of the symbol.
         """
-        return self._providers["RAADYahooFinance"].stock_timeseries_daily(symbols_list)
+        return self._providers[0].stock_timeseries_daily(symbols_list)
 
     def stock_timeseries_daily_pandas(self, symbols_list):
         data = self.stock_timeseries_daily(symbols_list)

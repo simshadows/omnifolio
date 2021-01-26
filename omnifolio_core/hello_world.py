@@ -40,35 +40,6 @@ def run():
     #data = json.loads(res.text)
     #print(res.status_code)
 
-    #url = "https://apidojo-yahoo-finance-v1.p.rapidapi.com/stock/v3/get-historical-data"
-    #params = {
-    #    "symbol": "ESPO.AX",
-    #}
-    #headers = {
-    #    "x-rapidapi-key": config["rapidapi_api_key"],
-    #    "x-rapidapi-host": "apidojo-yahoo-finance-v1.p.rapidapi.com",
-    #}
-    #res = requests.get(url, params=params, headers=headers)
-    ##print(res.text)
-    #print(res.status_code)
-    #data = json.loads(res.text)
-
-
-    #url = "https://apidojo-yahoo-finance-v1.p.rapidapi.com/stock/v3/get-historical-data"
-    #params = {
-    #    "symbol": "TSLA",
-    #}
-    #headers = {
-    #    "x-rapidapi-key": config["rapidapi_api_key"],
-    #    "x-rapidapi-host": "apidojo-yahoo-finance-v1.p.rapidapi.com",
-    #}
-    #res = requests.get(url, params=params, headers=headers)
-    ##print(res.text)
-    #print(res.status_code)
-    #data = json.loads(res.text)
-
-    #fwrite_json("tmp.txt", data=data)
-
     aggregator = MarketDataAggregator(config)
     data = aggregator.stock_timeseries_daily_pandas(["TSLA"])
 

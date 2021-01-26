@@ -8,5 +8,8 @@ License:  GNU Affero General Public License v3 (AGPL-3.0)
 
 from .exceptions import NoAPIKeyProvided
 
+from .config import get_config
+from .market_data_aggregator import MarketDataAggregator
+
 from .hello_world import run as hello_world
 
