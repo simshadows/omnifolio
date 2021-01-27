@@ -13,6 +13,7 @@ from collections import namedtuple
 
 import pandas as pd
 
+from .market_data_store import MarketDataStore
 from .market_data_providers.rapidapi_apidojo_yahoo_finance import RAADYahooFinance
 
 logger = logging.getLogger(__name__)
@@ -45,7 +46,16 @@ class MarketDataAggregator:
             in symbols_list), and the value is a StockTimeSeriesDailyResult object that details
             the history of the symbol.
         """
-        return self._providers[0].stock_timeseries_daily(symbols_list)
+        store = MarketDataStore(self._config)
+        provider = self._providers[0]
+
+        from_provider = provider.stock_timeseries_daily(symbols_list)
+        
+        for symbol in symbols_list:
+            data = {provider.get_provider_name(): from_provider[symbol]}
+            store.stock_timeseries_daily__update_one_symbol(symbol, data)
+
+        return from_provider
 
     def stock_timeseries_daily_pandas(self, symbols_list):
         data = self.stock_timeseries_daily(symbols_list)
@@ -60,7 +70,6 @@ class MarketDataAggregator:
                 }
             to_return[symbol]["prices"].sort_values("date")
             to_return[symbol]["events"].sort_values("date")
-
 
         return to_return
 
