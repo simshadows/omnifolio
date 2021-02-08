@@ -68,8 +68,10 @@ class MarketDataAggregator:
                     "events": pd.DataFrame(({"date": k} | v._asdict()) for (k, v) in v.events.items()),
                     "extra_data": v.extra_data,
                 }
-            to_return[symbol]["prices"].sort_values("date")
-            to_return[symbol]["events"].sort_values("date")
+            if "date" in to_return[symbol]["prices"].columns:
+                to_return[symbol]["prices"].sort_values("date")
+            if "date" in to_return[symbol]["events"].columns:
+                to_return[symbol]["events"].sort_values("date")
 
         return to_return
 

@@ -94,6 +94,12 @@ class RAADYahooFinance(MarketDataProvider):
                         f"Skipping this record. Keys are: {str(set(d))}."
                     )
                 continue
+            elif d["adjclose"] is None:
+                logger.debug(
+                        f"Encountered a null 'adjclose' value in the price list. " \
+                        f"Skipping this record. Keys are: {str(set(d))}."
+                    )
+                continue
             elif {"date", "open", "high", "low", "close", "volume", "adjclose"} != set(d):
                 logger.debug(f"Unexpected set of keys. Full key list: {str(set(d))}.")
 
@@ -143,9 +149,8 @@ class RAADYahooFinance(MarketDataProvider):
 
         # We need to reject the latest data point due to date unreliability.
 
-        prices_latest_date = prices_list[-1][0]
-        events_latest_date = events_list[-1][0]
-        date_to_reject = prices_latest_date if (prices_latest_date > events_latest_date) else events_latest_date
+        date_to_reject = prices_list[-1][0]
+        # TODO: What about events?
 
         prices=OrderedDict(prices_list)
         events=OrderedDict(events_list)
