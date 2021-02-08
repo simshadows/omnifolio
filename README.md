@@ -4,11 +4,23 @@ I'm developing this into a portfolio aggregation tool of some sort.
 
 For now, I'm just playing around things I'm considering using.
 
+## Disclaimer
+
+I am NOT an accounting or finance professional, nor have I ever received any formal training in these fields.
+
+It must also be assumed that no part of this codebase has been reviewed by any accounting or finance professional. (Though, I do intend to have it be reviewed at some point.)
+
+As such, I highly discourage anyone from using this tool for their own financial planning and tracking without sufficient independent research and understanding on relevant topics, and fully understanding the codebase.
+
+By using this program, you agree that I, the developer of this codebase, and anyone else involved in developing and/or shaping this codebase cannot be held liable for any damages caused by the use of this codebase.
+
 ## Possible Paths Moving Forward
 
 Option 1: A template Jupyter notebook, and my own relevant tools for financial analysis.
 
 Option 2: A local web app.
+
+Option 3: Both?
 
 ## License
 

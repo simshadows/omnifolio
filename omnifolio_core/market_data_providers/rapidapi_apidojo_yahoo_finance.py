@@ -29,6 +29,8 @@ logger = logging.getLogger(__name__)
 
 class RAADYahooFinance(MarketDataProvider):
 
+    _PRICE_DENOMINATOR = 10000
+
     def __init__(self, config):
         self._api_key = config["rapidapi_api_key"]
         return
@@ -102,16 +104,16 @@ class RAADYahooFinance(MarketDataProvider):
                     data_trust_value=self.get_trust_value(),
                     data_collection_time=curr_time,
 
-                    open=int(round(d["open"] * 1000, 0)),
-                    high=int(round(d["high"] * 1000, 0)),
-                    low=int(round(d["low"] * 1000, 0)),
-                    close=int(round(d["close"] * 1000, 0)),
-                    adjusted_close=int(round(d["adjclose"] * 1000, 0)),
+                    open=int(round(d["open"] * self._PRICE_DENOMINATOR, 0)),
+                    high=int(round(d["high"] * self._PRICE_DENOMINATOR, 0)),
+                    low=int(round(d["low"] * self._PRICE_DENOMINATOR, 0)),
+                    close=int(round(d["close"] * self._PRICE_DENOMINATOR, 0)),
+                    adjusted_close=int(round(d["adjclose"] * self._PRICE_DENOMINATOR, 0)),
 
                     volume=d["volume"],
 
                     unit="unknown",
-                    price_denominator=1000,
+                    price_denominator=self._PRICE_DENOMINATOR,
                 )
             prices_list.append((date, data_point, ))
 
