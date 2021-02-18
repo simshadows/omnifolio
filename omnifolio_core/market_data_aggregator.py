@@ -14,7 +14,7 @@ from collections import namedtuple
 import pandas as pd
 
 from .market_data_store import MarketDataStore
-from .market_data_providers.rapidapi_apidojo_yahoo_finance import RAADYahooFinance
+from .market_data_providers.yahoo_finance_lib import YahooFinanceLib
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ class MarketDataAggregator:
         self._config = config
 
         self._providers = [
-                RAADYahooFinance(config),
+                YahooFinanceLib(),
             ]
         return
 

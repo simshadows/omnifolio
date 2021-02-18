@@ -14,6 +14,13 @@ As such, I highly discourage anyone from using this tool for their own financial
 
 By using this program, you agree that I, the developer of this codebase, and anyone else involved in developing and/or shaping this codebase cannot be held liable for any damages caused by the use of this codebase.
 
+## Dependencies
+
+```
+pip install pandas
+pip install yfinance
+```
+
 ## Possible Paths Moving Forward
 
 Option 1: A template Jupyter notebook, and my own relevant tools for financial analysis.
@@ -21,6 +28,8 @@ Option 1: A template Jupyter notebook, and my own relevant tools for financial a
 Option 2: A local web app.
 
 Option 3: Both?
+
+I'm also considering splitting the market aggregation/caching functionality into an entirely separate repository.
 
 ## License
 
