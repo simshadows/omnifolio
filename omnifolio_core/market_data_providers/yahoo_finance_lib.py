@@ -10,6 +10,7 @@ import datetime
 import logging
 from collections import OrderedDict
 
+import numpy as np
 import pandas as pd
 import yfinance
 
@@ -52,6 +53,18 @@ class YahooFinanceLib(MarketDataProvider):
                 threads=True,
             )
 
+        new_column_names = {
+                "Open":         "open",
+                "High":         "high",
+                "Low":          "low",
+                "Close":        "close",
+                "Adj Close":    "adjusted_close",
+                "Volume":       "volume",
+                "Dividends":    "exdividend",
+                "Stock Splits": "split",
+            }
+        prices.rename(columns=new_column_names, level=1, inplace=True)
+
         if set(prices.columns.levels[0]) != set(symbols_list):
             raise ValueError("Expected all price data to be pulled.")
 
@@ -60,10 +73,13 @@ class YahooFinanceLib(MarketDataProvider):
         assert isinstance(prices, pd.DataFrame)
         assert prices.index.name == "Date"
         # prices.columns.levels[0] is a list of symbols
-        assert list(prices.columns.levels[1]) == ["Open", "High", "Low", "Close", "Adj Close",
-                                                  "Volume", "Dividends", "Stock Splits"]
+        assert set(prices.columns.levels[1]) == {"open", "high", "low", "close", "adjusted_close",
+                                                  "volume", "exdividend", "split"}
         assert prices.index.dtype.name == "datetime64[ns]"
-        assert list(prices.dtypes) == (["float64"] * len(prices.dtypes)) # Checking if they're all float64's
+        assert all((x == "float64") for x in prices.dtypes)
+        
+        # Process the data some more before we use it.
+        self._change_values_to_presplit_and_sort(prices)
 
         ret = {}
 
@@ -79,18 +95,18 @@ class YahooFinanceLib(MarketDataProvider):
                         data_trust_value=self.get_trust_value(),
                         data_collection_time=curr_time,
 
-                        open=int(round(values["Open"] * self._PRICE_DENOMINATOR, 0)),
-                        high=int(round(values["High"] * self._PRICE_DENOMINATOR, 0)),
-                        low=int(round(values["Low"] * self._PRICE_DENOMINATOR, 0)),
-                        close=int(round(values["Close"] * self._PRICE_DENOMINATOR, 0)),
-                        adjusted_close=int(round(values["Adj Close"] * self._PRICE_DENOMINATOR, 0)),
+                        open=int(round(values["open"] * self._PRICE_DENOMINATOR, 0)),
+                        high=int(round(values["high"] * self._PRICE_DENOMINATOR, 0)),
+                        low=int(round(values["low"] * self._PRICE_DENOMINATOR, 0)),
+                        close=int(round(values["close"] * self._PRICE_DENOMINATOR, 0)),
+                        adjusted_close=int(round(values["adjusted_close"] * self._PRICE_DENOMINATOR, 0)),
 
-                        volume=int(values["Volume"]),
+                        volume=int(values["volume"]),
 
                         unit="unknown",
                         price_denominator=self._PRICE_DENOMINATOR,
                     )
-                assert data_point.volume == values["Volume"]
+                #assert data_point.volume == values["Volume"]
                 prices_list.append((date, data_point, ))
 
             # TODO: Events?
@@ -118,4 +134,34 @@ class YahooFinanceLib(MarketDataProvider):
                 )
 
         return ret
+
+    @staticmethod
+    def _change_values_to_presplit_and_sort(df):
+        """
+        The function transforms the Yahoo Finance library's download() function's post-split
+        values to pre-split values.
+
+        E.g. TSLA on 2020-08-28 closed at 2213.40 pre-split.
+        It then opened the following trading session at 444.61 because of the split.
+        However, the library instead shows a 2020-08-28 closing price of 442.68.
+        This function makes it so the dataframe will show 2020-08-28 with a closing price of 2213.40.
+
+        Pre-split values are desirable for easier data consistency. TSLA's pre-split close on 2020-08-28
+        will always be 2213.40, while its post-split close depends on future splits. I will never
+        need to go back and recalculate a stock's price history once it's in the database.
+        """
+        df.sort_index(ascending=True)
+
+        symbols = list(df.columns.levels[0])
+
+        for symbol in symbols:
+            df.loc[:, (symbol, "split")] = np.where(df.loc[:, (symbol, "split")] == 0, 1, df.loc[:, (symbol, "split")])
+            cum_split = df.loc[:, (symbol, "split")].cumprod()
+            latest_cum_split = cum_split[-1]
+
+            for k in ["open", "high", "low", "close", "adjusted_close", "exdividend"]:
+                df.loc[:, (symbol, k)] *= (latest_cum_split / cum_split)
+            df.loc[:, (symbol, "volume")] /= (latest_cum_split / cum_split)
+
+        return
 
