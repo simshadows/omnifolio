@@ -44,7 +44,7 @@ class YahooFinanceLib(MarketDataProvider):
 
         curr_time = datetime.datetime.utcnow()
 
-        prices = yfinance.download(
+        df = yfinance.download(
                 tickers=symbols_list,
                 period="max",
                 interval="1d",
@@ -53,42 +53,18 @@ class YahooFinanceLib(MarketDataProvider):
                 threads=True,
             )
 
-        new_column_names = {
-                "Open":         "open",
-                "High":         "high",
-                "Low":          "low",
-                "Close":        "close",
-                "Adj Close":    "adjusted_close",
-                "Volume":       "volume",
-                "Dividends":    "exdividend",
-                "Stock Splits": "split",
-            }
-        prices.rename(columns=new_column_names, level=1, inplace=True)
-
-        if set(prices.columns.levels[0]) != set(symbols_list):
-            raise ValueError("Expected all price data to be pulled.")
-
-        # If any of these assumptions of the data format changes, I'll need to look into it.
-        # I might need to make some changes towards architecture-agnostic assertions.
-        assert isinstance(prices, pd.DataFrame)
-        assert prices.index.name == "Date"
-        # prices.columns.levels[0] is a list of symbols
-        assert set(prices.columns.levels[1]) == {"open", "high", "low", "close", "adjusted_close",
-                                                  "volume", "exdividend", "split"}
-        assert prices.index.dtype.name == "datetime64[ns]"
-        assert all((x == "float64") for x in prices.dtypes)
-        
-        # Process the data some more before we use it.
-        self._change_values_to_presplit_and_sort(prices)
+        self._verify_raw_data_format(df, symbols_list)
+        self._rename_column_labels(df)
+        self._change_values_to_presplit_and_sort(df)
 
         ret = {}
 
         for symbol in symbols_list:
-            df = prices[symbol].dropna(axis="index", how="all")
+            sub_df = df[symbol].dropna(axis="index", how="all")
 
             prices_list = [] # list(datetime.date, DayPrices)
 
-            for (index, values) in df.iterrows():
+            for (index, values) in sub_df.iterrows():
                 date = index.to_pydatetime().date() # Converts to native datetime.date object
                 data_point = DayPrices(
                         data_source=self.get_provider_name(),
@@ -136,10 +112,44 @@ class YahooFinanceLib(MarketDataProvider):
         return ret
 
     @staticmethod
+    def _verify_raw_data_format(df, symbols_list):
+        if not isinstance(df, pd.DataFrame):
+            raise TypeError
+        if df.index.name != "Date":
+            raise ValueError
+        if (set(symbols_list) != set(df.columns.levels[0])) or (len(symbols_list) == 0):
+            raise ValueError
+        expected_column_labels = ["Open", "High", "Low", "Close", "Adj Close", "Volume", "Dividends",
+                                  "Stock Splits"]
+        if list(df.columns.levels[1]) != expected_column_labels:
+            raise ValueError
+        if df.index.dtype.name != "datetime64[ns]":
+            raise TypeError
+        if not all((x == "float64") for x in df.dtypes):
+            raise TypeError
+        return
+
+    @staticmethod
+    def _rename_column_labels(df):
+        new_column_names = {
+                "Open":         "open",
+                "High":         "high",
+                "Low":          "low",
+                "Close":        "close",
+                "Adj Close":    "adjusted_close",
+                "Volume":       "volume",
+                "Dividends":    "exdividend",
+                "Stock Splits": "split",
+            }
+        df.rename(columns=new_column_names, level=1, inplace=True)
+        df.index.names = ["date"]
+        return
+
+    @staticmethod
     def _change_values_to_presplit_and_sort(df):
         """
-        The function transforms the Yahoo Finance library's download() function's post-split
-        values to pre-split values.
+        Transforms the Yahoo Finance library's download() function's split-adjusted values
+        to pre-split values.
 
         E.g. TSLA on 2020-08-28 closed at 2213.40 pre-split.
         It then opened the following trading session at 444.61 because of the split.
@@ -147,7 +157,7 @@ class YahooFinanceLib(MarketDataProvider):
         This function makes it so the dataframe will show 2020-08-28 with a closing price of 2213.40.
 
         Pre-split values are desirable for easier data consistency. TSLA's pre-split close on 2020-08-28
-        will always be 2213.40, while its post-split close depends on future splits. I will never
+        will always be 2213.40, while its split-adjusted close depends on future splits. I will never
         need to go back and recalculate a stock's price history once it's in the database.
         """
         df.sort_index(ascending=True)
@@ -157,7 +167,7 @@ class YahooFinanceLib(MarketDataProvider):
         for symbol in symbols:
             df.loc[:, (symbol, "split")] = np.where(df.loc[:, (symbol, "split")] == 0, 1, df.loc[:, (symbol, "split")])
             cum_split = df.loc[:, (symbol, "split")].cumprod()
-            latest_cum_split = cum_split[-1]
+            latest_cum_split = cum_split.dropna(axis="index", how="all")[-1]
 
             for k in ["open", "high", "low", "close", "adjusted_close", "exdividend"]:
                 df.loc[:, (symbol, k)] *= (latest_cum_split / cum_split)
