@@ -31,6 +31,14 @@ Option 3: Both?
 
 I'm also considering splitting the market aggregation/caching functionality into an entirely separate repository.
 
+## Major Issues
+
+Currently, the only data provider I'm using is the `yfinance` library.
+
+Unfortunately, it presents currency data in a floating point data type, which has been *insanely nightmarish* to work with due to imprecision when representing decimal numbers with decimal places. My adapter code that calls this library attempts to make the best estimate it can based on the data provided, but it's impossible to get it perfectly right. For penny stocks (which trade with sub-cent spreads) and dividend payouts (which are often calculated with many decimal places), the numbers will be (painfully) imprecise.
+
+I might consider calling the Yahoo Finance API directly instead in the future, though I'll just use the `yfinance` library for now since it's easier. I also don't have that many options for free data sources, but I'll continue on the lookout for more reliable free APIs and data sources to include as a data provider for this project.
+
 ## License
 
 All original source code is licensed under the [*GNU Affero General Public License v3.0*](https://www.gnu.org/licenses/agpl-3.0.en.html).

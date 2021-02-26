@@ -28,8 +28,9 @@ class MarketDataProvider(ABC):
     VERY_UNTRUSTED      = -300
 
     # Further deductions to trust value
-    CURRENCY_GUESS_DEDUCTION = 2
-    PRECISION_GUESS_DEDUCTION = 1
+    CURRENCY_ADJUSTMENT_DEDUCTION = 5 # Deduct if a provider automatically adjusts for currency changes.
+    PRECISION_GUESS_DEDUCTION = 4 # Deduct if we make a guess on decimal precision.
+    FLOATING_POINT_IMPRECISION_DEDUCTION = 50 # Deduct if a provider returns floating point values.
 
     @abstractmethod
     def get_trust_value(self):
@@ -72,9 +73,10 @@ class MarketDataProvider(ABC):
 
         Returns:
 
-            A dict of StockTimeSeriesDailyResult objects, where the key is the symbol (as written
-            in symbols_list), and the value is a StockTimeSeriesDailyResult object that details
-            the history of the symbol.
+            A dict of pandas.DataFrame objects.
+            The dict is guaranteed to have every symbol from symbols_list as a key.
+
+            (I will document the DataFrame later.)
         """
         raise NotImplementedError
 

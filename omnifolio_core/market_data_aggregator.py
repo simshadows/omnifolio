@@ -42,36 +42,17 @@ class MarketDataAggregator:
 
         Returns:
 
-            A dict of StockTimeSeriesDailyResult objects, where the key is the symbol (as written
-            in symbols_list), and the value is a StockTimeSeriesDailyResult object that details
-            the history of the symbol.
+            (TODO: Document this later.)
         """
         store = MarketDataStore(self._config)
-        provider = self._providers[0]
+        provider = self._providers[0] # TODO: Use multiple providers later?
 
         from_provider = provider.stock_timeseries_daily(symbols_list)
+
+        assert set(from_provider.keys()) == set(symbols_list)
         
         for symbol in symbols_list:
-            data = {provider.get_provider_name(): from_provider[symbol]}
-            store.stock_timeseries_daily__update_one_symbol(symbol, data)
+            store.update_stock_timeseries_daily(symbol, provider.get_provider_name(), from_provider[symbol])
 
         return from_provider
-
-    def stock_timeseries_daily_pandas(self, symbols_list):
-        data = self.stock_timeseries_daily(symbols_list)
-
-        to_return = {}
-        for (symbol, v) in data.items():
-            to_return[symbol] = {
-                    "symbol": v.symbol,
-                    "prices": pd.DataFrame(({"date": k} | v._asdict()) for (k, v) in v.prices.items()),
-                    "events": pd.DataFrame(({"date": k} | v._asdict()) for (k, v) in v.events.items()),
-                    "extra_data": v.extra_data,
-                }
-            if "date" in to_return[symbol]["prices"].columns:
-                to_return[symbol]["prices"].sort_values("date")
-            if "date" in to_return[symbol]["events"].columns:
-                to_return[symbol]["events"].sort_values("date")
-
-        return to_return
 

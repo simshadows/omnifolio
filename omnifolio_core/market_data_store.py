@@ -15,6 +15,9 @@ import sqlite3
 from collections import namedtuple
 from contextlib import contextmanager, closing
 
+import numpy as np
+import pandas as pd
+
 from .market_data_containers import (DayPrices,
                                      DayEvents,
                                      StockTimeSeriesDailyResult)
@@ -34,6 +37,9 @@ class MarketDataStore:
     def _check_if_db_is_set_up(conn):
         """
         Returns True if the database seems to have the expected schema.
+
+        (May not check everything.)
+        (TODO: Implement more thorough checking.)
         """
         query = """
                 SELECT name
@@ -138,11 +144,14 @@ class MarketDataStore:
         return ret
 
     @staticmethod
-    def _add_price_data(conn, *, symbol, exchange, date, day_data):
+    def _add_price_data(conn, *, symbol, exchange, date, df_row):
         assert isinstance(symbol, str)
         assert isinstance(exchange, str)
         assert isinstance(date, datetime.date)
-        assert isinstance(day_data, DayPrices)
+        assert isinstance(df_row, pd.Series)
+
+        assert isinstance(df_row["data_source"], str)
+
         query = """
                 INSERT INTO stock_timeseries_daily VALUES (
                     ?, -- symbol
@@ -176,74 +185,73 @@ class MarketDataStore:
                 exchange,
                 date,
 
-                day_data.data_source,
-                day_data.data_trust_value,
-                day_data.data_collection_time,
+                df_row["data_source"],
+                df_row["data_trust_value"].item(),
+                df_row["data_collection_time"].to_pydatetime(),
 
-                day_data.open,
-                day_data.high,
-                day_data.low,
-                day_data.close,
-                day_data.adjusted_close,
-                day_data.price_denominator,
+                df_row["open"].item(),
+                df_row["high"].item(),
+                df_row["low"].item(),
+                df_row["close"].item(),
+                df_row["adjusted_close"].item(),
+                df_row["price_denominator"].item(),
 
-                day_data.volume,
+                df_row["volume"].item(),
 
-                0, # Placeholder
-                1, # Placeholder
+                df_row["exdividend"].item(),
+                df_row["dividend_denominator"].item(),
 
-                1, # Placeholder
-                1, # Placeholder
+                df_row["split"].item(),
+                1,
 
-                day_data.unit,
+                "PLACEHOLDER",
             )
         conn.execute(query, params)
         return
 
     ######################################################################################
 
-    def stock_timeseries_daily__update_one_symbol(self, symbol, data):
+    def update_stock_timeseries_daily(self, symbol, provider_name, df):
         """
         Updates just one symbol with data from one or more providers.
 
         'symbol' is a string indicating Omnifolio's internally-used symbol for the stock/ETF.
 
-        'data' is a dictionary where the key is Omnifolio's internally-used provider name as
-        a string, and the value is a StockTimeSeriesDailyResult object.
+        'provider_name" is self-explanatory.
+
+        'df' is a pandas.DataFrame object containing all price data.
+
+        (TODO: Document the DataFrame object.)
         """
-        assert isinstance(symbol, str) and (len(symbol.strip()) > 0)
-        assert isinstance(data, dict)
+        assert isinstance(symbol, str) and (len(symbol) > 0) and (symbol == symbol.strip())
+        assert isinstance(provider_name, str) and (len(provider_name) > 0) and (provider_name == provider_name.strip())
+        assert isinstance(df, pd.DataFrame)
 
         with self._get_db_connection() as conn:
 
-            for (provider_name, provider_data) in data.items():
+            stored_dates = self._get_price_data_dates_as_set(
+                    conn,
+                    symbol=symbol,
+                    exchange="PLACEHOLDER",
+                    provider=provider_name,
+                )
+            pulled_dates = set(x.date() for x in df.index.to_pydatetime())
 
-                assert isinstance(provider_name, str) and (len(provider_name.strip()) > 0)
-                assert isinstance(provider_data, StockTimeSeriesDailyResult)
+            assert all(isinstance(x, datetime.date) for x in stored_dates)
+            assert all(isinstance(x, datetime.date) for x in pulled_dates)
 
-                prices = provider_data.prices
+            dates_missing_in_store = pulled_dates - stored_dates
+            for date in dates_missing_in_store:
+                row = df.loc[np.datetime64(date)]
 
-                pulled_dates = set(prices.keys())
-                stored_dates = self._get_price_data_dates_as_set(
+                self._add_price_data(
                         conn,
+
                         symbol=symbol,
                         exchange="PLACEHOLDER",
-                        provider=provider_name,
+                        date=date,
+                        df_row=row,
                     )
-                dates_missing_in_store = pulled_dates - stored_dates
-
-                for date in dates_missing_in_store:
-                    day_data = provider_data.prices[date]
-
-                    self._add_price_data(
-                            conn,
-                            symbol=symbol,
-                            exchange="PLACEHOLDER",
-                            date=date,
-                            day_data=day_data,
-                        )
-
-                # TODO: Events!
 
         return
 

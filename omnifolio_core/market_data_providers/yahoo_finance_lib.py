@@ -4,8 +4,24 @@
 Filename: yahoo_finance_lib.py
 Author:   contact@simshadows.com
 License:  GNU Affero General Public License v3 (AGPL-3.0)
+
+Pulls data from the yfinance library.
+
+WARNING: The library presents data in floating point, and the YahooFinanceLib attempts to make
+the best possible approximation from it. The maximum precision of prices will be in 100ths of
+a unit of currency (e.g. cents is the maximum precision for USD prices), and dividends are very
+likely to be incorrect for decimal places below a single cent.
+
+This library is merely a stopgap until a better library or API can be found.
+
+As a result, this data provider also has a lower data_trust_value score to deprioritize it as
+necessary.
+
+(I might modify the yfinance library later to have the option for decimal calculations, and
+submit a pull request...)
 """
 
+import copy
 import datetime
 import logging
 from collections import OrderedDict
@@ -21,16 +37,29 @@ from ..market_data_provider import MarketDataProvider
 
 logger = logging.getLogger(__name__)
 
+
+
+_NUMPY_INT = np.longlong
+_INT_MAX = np.iinfo(_NUMPY_INT).max
+
+assert np.iinfo(_NUMPY_INT).bits >= 64
+
+
+
 class YahooFinanceLib(MarketDataProvider):
 
-    _PRICE_DENOMINATOR = 10000
+    _PRICE_DENOMINATOR = 100
+    _DIVIDEND_DENOMINATOR = 1000**3
 
     def __init__(self):
         # No API key necessary!
         return
 
     def get_trust_value(self):
-        return self.TRUST_LEVEL_UNSURE - self.PRECISION_GUESS_DEDUCTION
+        return (self.SOMEWHAT_UNTRUSTED
+                - self.FLOATING_POINT_IMPRECISION_DEDUCTION
+                - self.PRECISION_GUESS_DEDUCTION
+                - self.CURRENCY_ADJUSTMENT_DEDUCTION)
 
     def stock_timeseries_daily(self, symbols_list):
         if not isinstance(symbols_list, list):
@@ -44,7 +73,20 @@ class YahooFinanceLib(MarketDataProvider):
 
         curr_time = datetime.datetime.utcnow()
 
-        df = yfinance.download(
+        df = self._stock_timeseries_daily__download_raw_data(symbols_list)
+        self._stock_timeseries_daily__verify_raw_data_format(df, symbols_list)
+        ret = self._stock_timeseries_daily__process_data(df, symbols_list, curr_time)
+
+        assert isinstance(ret, dict)
+        assert all(isinstance(k, str) and isinstance(v, pd.DataFrame) for (k, v) in ret.items())
+
+        return ret
+
+    ######################################################################################
+    ######################################################################################
+
+    def _stock_timeseries_daily__download_raw_data(self, symbols_list):
+        return yfinance.download(
                 tickers=symbols_list,
                 period="max",
                 interval="1d",
@@ -53,66 +95,7 @@ class YahooFinanceLib(MarketDataProvider):
                 threads=True,
             )
 
-        self._verify_raw_data_format(df, symbols_list)
-        self._rename_column_labels(df)
-        self._change_values_to_presplit_and_sort(df)
-
-        ret = {}
-
-        for symbol in symbols_list:
-            sub_df = df[symbol].dropna(axis="index", how="all")
-
-            prices_list = [] # list(datetime.date, DayPrices)
-
-            for (index, values) in sub_df.iterrows():
-                date = index.to_pydatetime().date() # Converts to native datetime.date object
-                data_point = DayPrices(
-                        data_source=self.get_provider_name(),
-                        data_trust_value=self.get_trust_value(),
-                        data_collection_time=curr_time,
-
-                        open=int(round(values["open"] * self._PRICE_DENOMINATOR, 0)),
-                        high=int(round(values["high"] * self._PRICE_DENOMINATOR, 0)),
-                        low=int(round(values["low"] * self._PRICE_DENOMINATOR, 0)),
-                        close=int(round(values["close"] * self._PRICE_DENOMINATOR, 0)),
-                        adjusted_close=int(round(values["adjusted_close"] * self._PRICE_DENOMINATOR, 0)),
-
-                        volume=int(values["volume"]),
-
-                        unit="unknown",
-                        price_denominator=self._PRICE_DENOMINATOR,
-                    )
-                #assert data_point.volume == values["Volume"]
-                prices_list.append((date, data_point, ))
-
-            # TODO: Events?
-
-            prices_list.sort(key=lambda x : x[0])
-
-            # TODO: Consider adding back in this data rejection logic
-            #date_to_reject = prices_list[-1][0]
-            ## TODO: What about events?
-            #
-            #prices=OrderedDict(prices_list)
-            #events=OrderedDict(events_list)
-            #if date_to_reject in prices:
-            #    logger.debug(f"Rejecting date {date_to_reject} in the prices dict.")
-            #    del prices[date_to_reject]
-            #if date_to_reject in events:
-            #    logger.debug(f"Rejecting date {date_to_reject} in the events dict.")
-            #    del events[date_to_reject]
-
-            ret[symbol] = StockTimeSeriesDailyResult(
-                    symbol=symbol,
-                    prices=OrderedDict(prices_list),
-                    events=OrderedDict(), # Empty for now
-                    extra_data={},
-                )
-
-        return ret
-
-    @staticmethod
-    def _verify_raw_data_format(df, symbols_list):
+    def _stock_timeseries_daily__verify_raw_data_format(self, df, symbols_list):
         if not isinstance(df, pd.DataFrame):
             raise TypeError
         if df.index.name != "Date":
@@ -129,6 +112,84 @@ class YahooFinanceLib(MarketDataProvider):
             raise TypeError
         return
 
+    def _stock_timeseries_daily__process_data(self, df, symbols_list, data_collection_time):
+        df.sort_index(ascending=True, inplace=True)
+
+        ret = {}
+        for symbol in symbols_list:
+            new_df = df[symbol].dropna(axis="index", how="all")
+
+            self._rename_column_labels(new_df)
+            self._change_values_to_presplit_and_sort(new_df)
+
+            # Now, we multiply our currencies by their denominators.
+
+            price_columns = ["open", "high", "low", "close", "adjusted_close"]
+
+            new_df[price_columns] *= self._PRICE_DENOMINATOR
+            new_df["exdividend"] *= self._DIVIDEND_DENOMINATOR
+
+            # Doesn't work.
+            #
+            ## We now run a quick check to make sure all values can be safely represented as ints.
+            #
+            #all_prices_are_safe = (new_df[price_columns] < _INT_MAX).all().all()
+            #dividends_are_safe = (new_df["exdividend"] < _INT_MAX).all()
+            #if not all_prices_are_safe:
+            #    raise RuntimeError(f"Unable to safely represent all prices for symbol {symbol}.")
+            #if not dividends_are_safe:
+            #    raise RuntimeError(f"Unable to safely represent all dividends for symbol {symbol}.")
+
+            # We now round, then cast types to integer.
+
+            new_column_types = {
+                    "open":           _NUMPY_INT,
+                    "high":           _NUMPY_INT,
+                    "low":            _NUMPY_INT,
+                    "close":          _NUMPY_INT,
+                    "adjusted_close": _NUMPY_INT,
+                    "exdividend":     _NUMPY_INT,
+                }
+            new_df[list(new_column_types.keys())] = new_df[list(new_column_types.keys())].round(decimals=0)
+            new_df = new_df.astype(new_column_types)
+            tmp = copy.deepcopy(new_df)
+
+            # Doesn't work.
+            #
+            ## We now check for rounding errors, correct them, and issue warnings for unexpected
+            ## precision in values.
+
+            #price_modulos = new_df[price_columns] % self._PRECISION_CANARY
+            #new_df[price_columns] = new_df[price_columns].mask((price_modulos == 9), new_df[price_columns] + 1)
+
+            ## Check for further unexpected precision
+
+            #price_modulos = new_df[price_columns] % self._PRECISION_CANARY # Recalculate
+
+            #unexpected_modulos = price_modulos > 0
+            #if unexpected_modulos.any().any():
+            #    for row_index, row_data in unexpected_modulos.iterrows():
+            #        if row_data.any():
+            #            sample_index = row_index
+            #            sample_row = tmp.loc[[row_index]]
+            #            break
+            #    logger.warning(f"Unexpected value(s) in the canary decimal place for symbol {symbol}."
+            #                   f"\nSample: \n{sample_index}\n{sample_row}\n")
+
+            # Add some new columns
+
+            new_df.insert(0, "dividend_denominator", _NUMPY_INT(self._DIVIDEND_DENOMINATOR))
+            new_df.insert(0, "price_denominator", _NUMPY_INT(self._PRICE_DENOMINATOR))
+            new_df.insert(0, "data_collection_time", data_collection_time)
+            new_df.insert(0, "data_trust_value", self.get_trust_value())
+            new_df.insert(0, "data_source", self.get_provider_name())
+
+            ret[symbol] = new_df
+        return ret
+
+    ######################################################################################
+    ######################################################################################
+
     @staticmethod
     def _rename_column_labels(df):
         new_column_names = {
@@ -141,7 +202,7 @@ class YahooFinanceLib(MarketDataProvider):
                 "Dividends":    "exdividend",
                 "Stock Splits": "split",
             }
-        df.rename(columns=new_column_names, level=1, inplace=True)
+        df.rename(columns=new_column_names, inplace=True)
         df.index.names = ["date"]
         return
 
@@ -160,18 +221,19 @@ class YahooFinanceLib(MarketDataProvider):
         will always be 2213.40, while its split-adjusted close depends on future splits. I will never
         need to go back and recalculate a stock's price history once it's in the database.
         """
-        df.sort_index(ascending=True)
+        # We need this to be sorted
+        assert df.index.is_monotonic
 
-        symbols = list(df.columns.levels[0])
+        df.loc[:, "split"] = np.where(df.loc[:, "split"] == 0, 1, df.loc[:, "split"])
+        cum_split = df.loc[:, "split"].cumprod()
+        latest_cum_split = cum_split.dropna(axis="index", how="all")[-1]
 
-        for symbol in symbols:
-            df.loc[:, (symbol, "split")] = np.where(df.loc[:, (symbol, "split")] == 0, 1, df.loc[:, (symbol, "split")])
-            cum_split = df.loc[:, (symbol, "split")].cumprod()
-            latest_cum_split = cum_split.dropna(axis="index", how="all")[-1]
+        # Multiply a bunch of columns by (latest_cum_split / cum_split)
+        columns_to_multiply = ["open", "high", "low", "close", "adjusted_close", "exdividend"]
+        df.loc[:, columns_to_multiply] = df.loc[:, columns_to_multiply].multiply(latest_cum_split / cum_split, axis="index")
 
-            for k in ["open", "high", "low", "close", "adjusted_close", "exdividend"]:
-                df.loc[:, (symbol, k)] *= (latest_cum_split / cum_split)
-            df.loc[:, (symbol, "volume")] /= (latest_cum_split / cum_split)
+        # Divide only the volume column by (latest_cum_split / cum_split)
+        df.loc[:, "volume"] /= (latest_cum_split / cum_split)
 
         return
 
