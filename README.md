@@ -19,6 +19,8 @@ By using this program, you agree that I, the developer of this codebase, and any
 ```
 pip install pandas
 pip install yfinance
+pip install matplotlib
+pip install ipympl
 ```
 
 ## Possible Paths Moving Forward

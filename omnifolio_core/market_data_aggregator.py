@@ -8,6 +8,7 @@ License:  GNU Affero General Public License v3 (AGPL-3.0)
 Defines the MarketDataAggregator class, which aggregates and stores data provided by MarketDataProvider.
 """
 
+import copy
 import logging
 from collections import namedtuple
 
@@ -16,7 +17,11 @@ import pandas as pd
 from .market_data_store import MarketDataStore
 from .market_data_providers.yahoo_finance_lib import YahooFinanceLib
 
+from .utils import str_is_nonempty_and_compact
+
 logger = logging.getLogger(__name__)
+
+
 
 class MarketDataAggregator:
 
@@ -62,4 +67,35 @@ class MarketDataAggregator:
         assert set(from_store.keys()) == set(symbols_list)
 
         return from_store
+
+    ######################################################################################
+
+    @staticmethod
+    def stock_timeseries_daily__convert_to_splitadjusted(dfs):
+        """
+        Takes in whatever stock_timeseries_daily() returns.
+
+        Returns a new set of dataframes with all relevant values split-adjusted, with integer
+        types converted to floating point.
+        """
+        assert isinstance(dfs, dict)
+        ret = {}
+        for (symbol, df) in dfs.items():
+            assert str_is_nonempty_and_compact(symbol)
+            assert isinstance(df, pd.DataFrame)
+
+            df = copy.deepcopy(df)
+
+            cum_split = df.loc[:, "split"].cumprod()
+            latest_cum_split = cum_split.dropna(axis="index", how="all")[-1]
+
+            # Multiply a bunch of columns by (cum_split / latest_cum_split)
+            columns_to_multiply = ["open", "high", "low", "close", "adjusted_close", "exdividend"]
+            df.loc[:, columns_to_multiply] = df.loc[:, columns_to_multiply].multiply(cum_split / latest_cum_split, axis="index")
+
+            # Multiply only the volume column by (latest_cum_split / cum_split)
+            df.loc[:, "volume"] *= (latest_cum_split / cum_split)
+
+            ret[symbol] = df
+        return ret
 
