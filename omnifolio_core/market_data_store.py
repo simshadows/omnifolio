@@ -94,11 +94,15 @@ class MarketDataStore:
                     ----------------
                     -- UNIT SPLIT --
                     ----------------
-                    -- Numerator and denominator represents the split value.
                     -- Pre-split units get multiplied by this split value to get post-split units.
                     -- Pre-split prices get divided by this split value to get post-split prices.
-                    split_numerator          INTEGER,
-                    split_denominator        INTEGER,
+                    -- (TODO: Consider changing the data type to a pair of integers. Although
+                    -- reverse splits and other splits where this value has a fractional component
+                    -- are quite rare, they still happen. The chances of this causing precision
+                    -- errors are rarer still, but I'd much rather we have 100% precision to
+                    -- begin with. The only thing keeping me from implementing 100% precision
+                    -- is the high added complexity versus the small benefit.)
+                    split                    REAL,
 
                     -------------------
                     -- CURRENCY UNIT --
@@ -151,6 +155,22 @@ class MarketDataStore:
         assert isinstance(df_row, pd.Series)
 
         assert isinstance(df_row["data_source"], str)
+        assert isinstance(df_row["data_trust_value"].item(), int)
+        assert isinstance(df_row["data_collection_time"].to_pydatetime(), datetime.datetime)
+
+        assert isinstance(df_row["open"].item(), int)
+        assert isinstance(df_row["high"].item(), int)
+        assert isinstance(df_row["low"].item(), int)
+        assert isinstance(df_row["close"].item(), int)
+        assert isinstance(df_row["adjusted_close"].item(), int)
+        assert isinstance(df_row["price_denominator"].item(), int)
+
+        assert isinstance(df_row["volume"].item(), int)
+
+        assert isinstance(df_row["exdividend"].item(), int)
+        assert isinstance(df_row["dividend_denominator"].item(), int)
+
+        assert isinstance(df_row["split"].item(), float)
 
         query = """
                 INSERT INTO stock_timeseries_daily VALUES (
@@ -174,8 +194,7 @@ class MarketDataStore:
                     ?, -- dividend_numerator
                     ?, -- dividend_denominator
 
-                    ?, -- split_numerator
-                    ?, -- split_denominator
+                    ?, -- split
 
                     ? -- unit
                 );
@@ -202,7 +221,6 @@ class MarketDataStore:
                 df_row["dividend_denominator"].item(),
 
                 df_row["split"].item(),
-                1,
 
                 "PLACEHOLDER",
             )

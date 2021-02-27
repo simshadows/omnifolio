@@ -129,16 +129,23 @@ class YahooFinanceLib(MarketDataProvider):
             new_df[price_columns] *= self._PRICE_DENOMINATOR
             new_df["exdividend"] *= self._DIVIDEND_DENOMINATOR
 
-            # Doesn't work.
-            #
-            ## We now run a quick check to make sure all values can be safely represented as ints.
-            #
-            #all_prices_are_safe = (new_df[price_columns] < _INT_MAX).all().all()
-            #dividends_are_safe = (new_df["exdividend"] < _INT_MAX).all()
-            #if not all_prices_are_safe:
-            #    raise RuntimeError(f"Unable to safely represent all prices for symbol {symbol}.")
-            #if not dividends_are_safe:
-            #    raise RuntimeError(f"Unable to safely represent all dividends for symbol {symbol}.")
+            # We now check the volume column for any fractional components.
+
+            volume_fractionals_check = (new_df["volume"] % 1) != 0
+            if volume_fractionals_check.any():
+                # This loop will find a sample, then issue a warning along with a printout of the sample.
+                # TODO: Make this more efficient.
+                for row_index, row_has_fractional_volume in volume_fractionals_check.iteritems():
+                    assert isinstance(row_has_fractional_volume, bool)
+                    if row_has_fractional_volume:
+                        sample_row = new_df.loc[row_index]
+                        logger.warning(f"Unexpected fractional volume for symbol {symbol}. "
+                                       "This shouldn't have happened. "
+                                       "This will be rounded to the nearest integer. "
+                                       f"\nSample: \n{row_index}\n{sample_row}\n")
+                        break
+                else:
+                    raise RuntimeError("Expected to find a sample.")
 
             # We now round, then cast types to integer.
 
@@ -148,33 +155,11 @@ class YahooFinanceLib(MarketDataProvider):
                     "low":            _NUMPY_INT,
                     "close":          _NUMPY_INT,
                     "adjusted_close": _NUMPY_INT,
+                    "volume":         _NUMPY_INT,
                     "exdividend":     _NUMPY_INT,
                 }
             new_df[list(new_column_types.keys())] = new_df[list(new_column_types.keys())].round(decimals=0)
             new_df = new_df.astype(new_column_types)
-            tmp = copy.deepcopy(new_df)
-
-            # Doesn't work.
-            #
-            ## We now check for rounding errors, correct them, and issue warnings for unexpected
-            ## precision in values.
-
-            #price_modulos = new_df[price_columns] % self._PRECISION_CANARY
-            #new_df[price_columns] = new_df[price_columns].mask((price_modulos == 9), new_df[price_columns] + 1)
-
-            ## Check for further unexpected precision
-
-            #price_modulos = new_df[price_columns] % self._PRECISION_CANARY # Recalculate
-
-            #unexpected_modulos = price_modulos > 0
-            #if unexpected_modulos.any().any():
-            #    for row_index, row_data in unexpected_modulos.iterrows():
-            #        if row_data.any():
-            #            sample_index = row_index
-            #            sample_row = tmp.loc[[row_index]]
-            #            break
-            #    logger.warning(f"Unexpected value(s) in the canary decimal place for symbol {symbol}."
-            #                   f"\nSample: \n{sample_index}\n{sample_row}\n")
 
             # Add some new columns
 
