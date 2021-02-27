@@ -30,7 +30,7 @@ class MarketDataAggregator:
 
     ######################################################################################
 
-    def stock_timeseries_daily(self, symbols_list):
+    def stock_timeseries_daily(self, symbols_list, update_store=True):
         """
         Get full daily history of a list of stocks and/or ETFs.
 
@@ -44,15 +44,22 @@ class MarketDataAggregator:
 
             (TODO: Document this later.)
         """
+        assert isinstance(update_store, bool)
+
         store = MarketDataStore(self._config)
         provider = self._providers[0] # TODO: Use multiple providers later?
 
-        from_provider = provider.stock_timeseries_daily(symbols_list)
+        if update_store:
+            from_provider = provider.stock_timeseries_daily(symbols_list)
 
-        assert set(from_provider.keys()) == set(symbols_list)
-        
-        for symbol in symbols_list:
-            store.update_stock_timeseries_daily(symbol, provider.get_provider_name(), from_provider[symbol])
+            assert set(from_provider.keys()) == set(symbols_list)
+            
+            for symbol in symbols_list:
+                store.update_stock_timeseries_daily(symbol, provider.get_provider_name(), from_provider[symbol])
 
-        return from_provider
+        from_store = store.get_stock_timeseries_daily(symbols_list)
+
+        assert set(from_store.keys()) == set(symbols_list)
+
+        return from_store
 

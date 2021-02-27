@@ -40,7 +40,6 @@ logger = logging.getLogger(__name__)
 
 _NUMPY_INT = np.longlong
 _INT_MAX = np.iinfo(_NUMPY_INT).max
-
 assert np.iinfo(_NUMPY_INT).bits >= 64
 
 

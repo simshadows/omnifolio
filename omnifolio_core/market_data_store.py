@@ -22,6 +22,14 @@ from .utils import fwrite_json, fread_json
 
 logger = logging.getLogger(__name__)
 
+
+
+_NUMPY_INT = np.longlong
+_NUMPY_FLOAT = np.double
+assert np.iinfo(_NUMPY_INT).bits >= 64
+
+
+
 class MarketDataStore:
 
     _STOCK_TIMESERIES_DAILY__FILEPATH = "stock_timeseries_daily.db"
@@ -58,7 +66,9 @@ class MarketDataStore:
 
                     data_source              TEXT,
                     data_trust_value         INTEGER,
-                    data_collection_time_utc DATETIME,
+                    data_collection_time_utc TIMESTAMP,
+
+                    unit                     TEXT, -- Currency Unit (e.g. "USD" or "AUD")
 
                     ----------------
                     -- PRICE DATA --
@@ -100,11 +110,6 @@ class MarketDataStore:
                     -- is the high added complexity versus the small benefit.)
                     split                    REAL,
 
-                    -------------------
-                    -- CURRENCY UNIT --
-                    -------------------
-                    unit                     TEXT,
-
                     CONSTRAINT stock_timeseries_daily_pk
                         PRIMARY KEY (symbol, date, data_source)
                 );
@@ -121,7 +126,8 @@ class MarketDataStore:
                 self._market_data_store_path,
                 self._STOCK_TIMESERIES_DAILY__FILEPATH,
             )
-        with sqlite3.connect(path, detect_types=sqlite3.PARSE_DECLTYPES) as conn:
+        detect_types = sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES
+        with sqlite3.connect(path, detect_types=detect_types) as conn:
             if not self._check_if_db_is_set_up(conn):
                 self._set_up_db(conn)
                 if not self._check_if_db_is_set_up(conn):
@@ -152,6 +158,8 @@ class MarketDataStore:
         assert isinstance(df_row["data_trust_value"].item(), int)
         assert isinstance(df_row["data_collection_time"].to_pydatetime(), datetime.datetime)
 
+        assert isinstance(df_row["unit"], str)
+
         assert isinstance(df_row["open"].item(), int)
         assert isinstance(df_row["high"].item(), int)
         assert isinstance(df_row["low"].item(), int)
@@ -166,8 +174,6 @@ class MarketDataStore:
 
         assert isinstance(df_row["split"].item(), float)
 
-        assert isinstance(df_row["unit"], str)
-
         query = """
                 INSERT INTO stock_timeseries_daily VALUES (
                     ?, -- symbol
@@ -176,6 +182,8 @@ class MarketDataStore:
                     ?, -- data_source
                     ?, -- data_trust_value
                     ?, -- data_collection_time
+
+                    ?, -- unit
 
                     ?, -- open
                     ?, -- high
@@ -189,9 +197,7 @@ class MarketDataStore:
                     ?, -- dividend_numerator
                     ?, -- dividend_denominator
 
-                    ?, -- split
-
-                    ? -- unit
+                    ? -- split
                 );
             """
         params = (
@@ -201,6 +207,8 @@ class MarketDataStore:
                 df_row["data_source"],
                 df_row["data_trust_value"].item(),
                 df_row["data_collection_time"].to_pydatetime(),
+
+                df_row["unit"],
 
                 df_row["open"].item(),
                 df_row["high"].item(),
@@ -215,13 +223,114 @@ class MarketDataStore:
                 df_row["dividend_denominator"].item(),
 
                 df_row["split"].item(),
-
-                df_row["unit"],
             )
         conn.execute(query, params)
         return
 
+    @staticmethod
+    def _get_price_data(conn, *, symbols_list):
+        # TODO: Make this pull only one row for every date. For now, it just pulls everything.
+        markers = ",".join(["?"] * len(symbols_list))
+        query = f"""
+                SELECT
+                    symbol,
+                    date,
+
+                    data_source,
+                    data_trust_value,
+                    data_collection_time_utc,
+
+                    unit,
+
+                    open,
+                    high,
+                    low,
+                    close,
+                    adjusted_close,
+                    price_denominator,
+
+                    volume,
+
+                    dividend_numerator,
+                    dividend_denominator,
+
+                    split
+                    
+                FROM stock_timeseries_daily
+                WHERE
+                    symbol IN ({markers})
+                ;
+            """
+        cursor = conn.execute(query, symbols_list)
+        ret = [x for x in cursor]
+        return ret
+
     ######################################################################################
+
+    def get_stock_timeseries_daily(self, symbols_list):
+        with self._get_db_connection() as conn:
+            data = self._get_price_data(conn, symbols_list=symbols_list)
+
+            column_names = [
+                    "symbol",
+                    "date",
+                    "data_source",
+                    "data_trust_value",
+                    "data_collection_time",
+                    "unit",
+                    "open",
+                    "high",
+                    "low",
+                    "close",
+                    "adjusted_close",
+                    "price_denominator",
+                    "volume",
+                    "exdividend",
+                    "dividend_denominator",
+                    "split",
+                ]
+            df = pd.DataFrame(data, columns=column_names)
+
+            new_column_types = {
+                    "date": np.datetime64,
+                }
+            df = df.astype(new_column_types)
+
+            # Check types
+
+            expected_type_names = [
+                    "object",
+                    "datetime64[ns]",
+                    "object",
+                    "int64",
+                    "datetime64[ns]",
+                    "object",
+                    "int64",
+                    "int64",
+                    "int64",
+                    "int64",
+                    "int64",
+                    "int64",
+                    "int64",
+                    "int64",
+                    "int64",
+                    "float64",
+                ]
+            if list(str(x) for x in df.dtypes) != expected_type_names:
+                raise TypeError("Unexpected types: " + str(df.dtypes))
+
+            # Separate symbols into different dataframes, and make final adjustments to dataframe formatting
+
+            dfs = {}
+
+            for symbol in symbols_list:
+                new_df = df.loc[df["symbol"] == symbol].drop(labels=["symbol"], axis="columns")
+                new_df = new_df.set_index(keys=["date"], verify_integrity=True)
+                if not new_df.index.is_monotonic:
+                    raise RuntimeError
+                dfs[symbol] = new_df
+
+            return dfs
 
     def update_stock_timeseries_daily(self, symbol, provider_name, df):
         """
