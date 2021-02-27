@@ -17,6 +17,7 @@ import pandas as pd
 from .market_data_store import MarketDataStore
 from .market_data_providers.yahoo_finance_lib import YahooFinanceLib
 
+from .exceptions import MissingData
 from .utils import str_is_nonempty_and_compact
 
 logger = logging.getLogger(__name__)
@@ -64,7 +65,10 @@ class MarketDataAggregator:
 
         from_store = store.get_stock_timeseries_daily(symbols_list)
 
-        assert set(from_store.keys()) == set(symbols_list)
+        if (set(from_store.keys()) != set(symbols_list)):
+            raise RuntimeError
+        if any(len(v) == 0 for (k, v) in from_store.items()):
+            raise MissingData("Cannot find data for one or more symbols.")
 
         return from_store
 

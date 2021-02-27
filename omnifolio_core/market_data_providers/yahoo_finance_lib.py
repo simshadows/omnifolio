@@ -39,6 +39,8 @@ logger = logging.getLogger(__name__)
 
 
 _NUMPY_INT = np.longlong
+_NUMPY_FLOAT = np.double
+
 _INT_MAX = np.iinfo(_NUMPY_INT).max
 assert np.iinfo(_NUMPY_INT).bits >= 64
 
@@ -107,7 +109,7 @@ class YahooFinanceLib(MarketDataProvider):
             raise ValueError
         if df.index.dtype.name != "datetime64[ns]":
             raise TypeError
-        if not all((x == "float64") for x in df.dtypes):
+        if not all((x == "float64") or (x == "int64")for x in df.dtypes):
             raise TypeError
         return
 
@@ -159,6 +161,7 @@ class YahooFinanceLib(MarketDataProvider):
                     "adjusted_close": _NUMPY_INT,
                     "volume":         _NUMPY_INT,
                     "exdividend":     _NUMPY_INT,
+                    "split":          _NUMPY_FLOAT,
                 }
             new_df[list(new_column_types.keys())] = new_df[list(new_column_types.keys())].round(decimals=0)
             new_df = new_df.astype(new_column_types)

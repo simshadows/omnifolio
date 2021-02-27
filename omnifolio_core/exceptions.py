@@ -14,9 +14,9 @@ class NoAPIKeyProvided(Exception):
     """
     pass
 
-class NoResult(Exception):
+class MissingData(Exception):
     """
-    Thrown if a query gave no result (e.g. if a symbol is invalid).
+    Thrown if not enough data can be provided (e.g. if a symbol is invalid).
     """
     pass
 
