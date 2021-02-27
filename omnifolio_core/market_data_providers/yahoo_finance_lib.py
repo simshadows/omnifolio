@@ -30,10 +30,9 @@ import numpy as np
 import pandas as pd
 import yfinance
 
-from ..market_data_containers import (DayPrices,
-                                      DayEvents,
-                                      StockTimeSeriesDailyResult)
 from ..market_data_provider import MarketDataProvider
+
+from ..utils import str_is_nonempty_and_compact
 
 logger = logging.getLogger(__name__)
 
@@ -66,13 +65,14 @@ class YahooFinanceLib(MarketDataProvider):
             raise TypeError
         if len(symbols_list) == 0:
             raise ValueError("Expected non-empty list.")
-        if not all(isinstance(x, str) and (len(x.strip()) > 0) for x in symbols_list):
+        if not all(str_is_nonempty_and_compact(x) for x in symbols_list):
             raise TypeError
         if len(symbols_list) != len(set(symbols_list)):
             raise ValueError("List must not have duplicates.")
 
         curr_time = datetime.datetime.utcnow()
 
+        logger.info("Downloading price history.")
         df = self._stock_timeseries_daily__download_raw_data(symbols_list)
         self._stock_timeseries_daily__verify_raw_data_format(df, symbols_list)
         ret = self._stock_timeseries_daily__process_data(df, symbols_list, curr_time)
@@ -114,6 +114,9 @@ class YahooFinanceLib(MarketDataProvider):
 
     def _stock_timeseries_daily__process_data(self, df, symbols_list, data_collection_time):
         df.sort_index(ascending=True, inplace=True)
+
+        logger.info("Downloading symbol currency data.")
+        currencies = self._get_currencies(symbols_list)
 
         ret = {}
         for symbol in symbols_list:
@@ -165,6 +168,7 @@ class YahooFinanceLib(MarketDataProvider):
 
             new_df.insert(0, "dividend_denominator", _NUMPY_INT(self._DIVIDEND_DENOMINATOR))
             new_df.insert(0, "price_denominator", _NUMPY_INT(self._PRICE_DENOMINATOR))
+            new_df.insert(0, "unit", currencies[symbol])
             new_df.insert(0, "data_collection_time", data_collection_time)
             new_df.insert(0, "data_trust_value", self.get_trust_value())
             new_df.insert(0, "data_source", self.get_provider_name())
@@ -174,6 +178,18 @@ class YahooFinanceLib(MarketDataProvider):
 
     ######################################################################################
     ######################################################################################
+
+    @staticmethod
+    def _get_currencies(symbols):
+        ret = {}
+        for symbol in symbols:
+            assert str_is_nonempty_and_compact(symbol)
+            assert symbol not in ret
+            sym = yfinance.Ticker(symbol)
+            currency = sym.info["currency"]
+            assert str_is_nonempty_and_compact(currency)
+            ret[symbol] = currency
+        return ret
 
     @staticmethod
     def _rename_column_labels(df):

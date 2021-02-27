@@ -18,9 +18,6 @@ from contextlib import contextmanager, closing
 import numpy as np
 import pandas as pd
 
-from .market_data_containers import (DayPrices,
-                                     DayEvents,
-                                     StockTimeSeriesDailyResult)
 from .utils import fwrite_json, fread_json
 
 logger = logging.getLogger(__name__)
@@ -56,8 +53,7 @@ class MarketDataStore:
     def _set_up_db(conn):
         query = """
                 CREATE TABLE stock_timeseries_daily (
-                    symbol                   TEXT,
-                    exchange                 TEXT,
+                    symbol                   TEXT, -- RIC code
                     date                     DATE,
 
                     data_source              TEXT,
@@ -110,7 +106,7 @@ class MarketDataStore:
                     unit                     TEXT,
 
                     CONSTRAINT stock_timeseries_daily_pk
-                        PRIMARY KEY (symbol, exchange, date, data_source)
+                        PRIMARY KEY (symbol, date, data_source)
                 );
             """
         conn.execute(query)
@@ -133,24 +129,22 @@ class MarketDataStore:
             yield conn
 
     @staticmethod
-    def _get_price_data_dates_as_set(conn, *, symbol, exchange, provider):
+    def _get_price_data_dates_as_set(conn, *, symbol, provider):
         query = """
                 SELECT date [date]
                 FROM stock_timeseries_daily
                 WHERE
                     symbol = ?
-                    AND exchange = ?
                     AND data_source = ?;
             """
-        cursor = conn.execute(query, (symbol, exchange, provider))
+        cursor = conn.execute(query, (symbol, provider))
         ret = {x[0] for x in cursor}
         assert all(isinstance(x, datetime.date) for x in ret)
         return ret
 
     @staticmethod
-    def _add_price_data(conn, *, symbol, exchange, date, df_row):
+    def _add_price_data(conn, *, symbol, date, df_row):
         assert isinstance(symbol, str)
-        assert isinstance(exchange, str)
         assert isinstance(date, datetime.date)
         assert isinstance(df_row, pd.Series)
 
@@ -172,10 +166,11 @@ class MarketDataStore:
 
         assert isinstance(df_row["split"].item(), float)
 
+        assert isinstance(df_row["unit"], str)
+
         query = """
                 INSERT INTO stock_timeseries_daily VALUES (
                     ?, -- symbol
-                    ?, -- exchange
                     ?, -- date
 
                     ?, -- data_source
@@ -201,7 +196,6 @@ class MarketDataStore:
             """
         params = (
                 symbol,
-                exchange,
                 date,
 
                 df_row["data_source"],
@@ -222,7 +216,7 @@ class MarketDataStore:
 
                 df_row["split"].item(),
 
-                "PLACEHOLDER",
+                df_row["unit"],
             )
         conn.execute(query, params)
         return
@@ -250,7 +244,6 @@ class MarketDataStore:
             stored_dates = self._get_price_data_dates_as_set(
                     conn,
                     symbol=symbol,
-                    exchange="PLACEHOLDER",
                     provider=provider_name,
                 )
             pulled_dates = set(x.date() for x in df.index.to_pydatetime())
@@ -266,7 +259,6 @@ class MarketDataStore:
                         conn,
 
                         symbol=symbol,
-                        exchange="PLACEHOLDER",
                         date=date,
                         df_row=row,
                     )

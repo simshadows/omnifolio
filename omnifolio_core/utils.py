@@ -39,3 +39,10 @@ def fread_json(relfilepath):
     with open(relfilepath, encoding=_ENCODING, mode="r") as f:
         return json.loads(f.read())
 
+def str_is_nonempty_and_compact(obj):
+    return (
+            isinstance(obj, str)
+            and (len(obj) > 0)
+            and (obj == obj.strip())
+        )
+
