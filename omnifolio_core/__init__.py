@@ -10,4 +10,5 @@ from .exceptions import NoAPIKeyProvided
 
 from .config import get_config
 from .market_data_aggregator import MarketDataAggregator
+from .portfolio_tracker import PortfolioTracker
 

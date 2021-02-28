@@ -2,7 +2,7 @@
 config.json
 config.json.backup
 tmp.txt
-sample_user_data/market_data_store/
+_user_data/
 
 ##########################################################################################
 
