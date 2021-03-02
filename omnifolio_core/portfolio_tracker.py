@@ -16,14 +16,13 @@ from collections import namedtuple
 from fractions import Fraction
 from itertools import chain
 
-from .config import get_config
+import pandas as pd
+import numpy as np
 
-#from .utils import fwrite_json, fread_json
+from .config import get_config
+from .utils import re_decimal
 
 logger = logging.getLogger(__name__)
-
-
-_re_decimal = re.compile(r"^\d*[.,]?\d*$")
 
 
 TradeInfo = namedtuple(
@@ -64,6 +63,10 @@ _SAMPLE_TRADES_FILE_DATA = [
 
         "fees",
         "fees_currency",
+
+        "unit_quantity_denominator", # Divides 'unit_quantity' by this number.
+        "unit_price_denominator", # Divides 'unit_price' by this number.
+        "fees_denominator", # Divides 'fees' by this number.
     ],
     [
         "1 - First trade!",
@@ -75,6 +78,8 @@ _SAMPLE_TRADES_FILE_DATA = [
         "32", "439.21", "AUD",
 
         "29.95", "AUD",
+
+        "1", "1", "1",
     ],
     [
         "2",
@@ -86,6 +91,8 @@ _SAMPLE_TRADES_FILE_DATA = [
         "20", "478.03", "AUD",
 
         "19.95", "AUD",
+
+        "1", "1", "1",
     ],
     [
         "3",
@@ -97,6 +104,8 @@ _SAMPLE_TRADES_FILE_DATA = [
         "22", "449.35", "AUD",
 
         "19.95", "AUD",
+
+        "1", "1", "1",
     ],
     [
         "4",
@@ -108,6 +117,8 @@ _SAMPLE_TRADES_FILE_DATA = [
         "120", "26.90", "AUD",
 
         "19.95", "AUD",
+
+        "1", "1", "1",
     ],
     [
         "5 - We'll test the stock split and fractional ownership. Split occurs before 2020-08-31 opening bell.",
@@ -119,8 +130,26 @@ _SAMPLE_TRADES_FILE_DATA = [
         "4.5", "443.12", "USD",
 
         "0", "USD",
+
+        "1", "1", "1",
     ],
 ]
+
+def _only_allow_nonempty_str(s, name):
+    assert isinstance(s, str)
+    assert isinstance(name, str)
+    s = s.strip()
+    if len(s) == 0:
+        raise ValueError(f"{name} must be non-empty.")
+    return s
+
+def _only_allow_decimal_rep(s, name):
+    assert isinstance(s, str)
+    assert isinstance(name, str)
+    s = s.strip()
+    if not re_decimal.fullmatch(s):
+        raise ValueError(f"{name} must be in a decimal representation.")
+    return Fraction(s)
 
 
 
@@ -132,7 +161,7 @@ class PortfolioTracker:
         self._user_data_path = config["user_data_path"]
         return
 
-    def _read_trades_file(self):
+    def get_trades(self):
         filepath = os.path.join(
                 self._user_data_path,
                 self._TRADES__FILEPATH,
@@ -157,8 +186,8 @@ class PortfolioTracker:
         
         if len(data) == 0:
             raise ValueError("CSV file '{filepath}' must be non-empty.")
-        if not all((len(x) == 10) for x in data):
-            raise ValueError("CSV file '{filepath}' must be comprised of only 10-column rows.")
+        if not all((len(x) == 13) for x in data):
+            raise ValueError("CSV file '{filepath}' must be comprised of only 13-column rows.")
 
         # We check the first row, which should just be labels, then we strip it away.
 
@@ -168,8 +197,6 @@ class PortfolioTracker:
 
         ret = []
         for row in data:
-            # TODO: Make this loop more succinct. Too much repetitive code.
-
             comment = row[0].strip()
             # comment is allowed to be whatever the user wants it to be.
 
@@ -181,36 +208,29 @@ class PortfolioTracker:
             # account is *generally* allowed to be whatever the user wants it to be, except
             # it can't be empty.
 
-            ric_symbol = row[3].strip()
-            if len(ric_symbol) == 0:
-                raise ValueError("RIC symbols must be non-empty.")
-
+            ric_symbol = _only_allow_nonempty_str(row[3], "RIC symbol")
             trade_type = row[4].strip()
             if trade_type not in _ALLOWED_TRADE_TYPE_STRINGS:
                 raise ValueError("Trade types must be either 'buy' or 'sell'.")
 
-            unit_quantity = row[5].strip()
-            if not _re_decimal.fullmatch(unit_quantity):
-                raise ValueError("Unit quantities must be in a decimal representation.")
-            unit_quantity = Fraction(unit_quantity)
+            unit_quantity = _only_allow_decimal_rep(row[5], "Unit quantity")
+            unit_price = _only_allow_decimal_rep(row[6], "Unit price")
+            unit_currency = _only_allow_nonempty_str(row[7], "Unit currency")
 
-            unit_price = row[6].strip()
-            if not _re_decimal.fullmatch(unit_price):
-                raise ValueError("Unit prices must be in a decimal representation.")
-            unit_price = Fraction(unit_price)
+            fees = _only_allow_decimal_rep(row[8], "Fees")
+            fees_currency = _only_allow_nonempty_str(row[9], "Fees currency")
 
-            unit_currency = row[7].strip()
-            if len(unit_currency) == 0:
-                raise ValueError("Unit currency must be non-empty.")
+            unit_quantity_denominator = _only_allow_decimal_rep(row[10], "Unit quantity denominator")
+            unit_price_denominator = _only_allow_decimal_rep(row[11], "Unit price denominator")
+            fees_denominator = _only_allow_decimal_rep(row[12], "Fees denominator")
 
-            fees = row[8].strip()
-            if not _re_decimal.fullmatch(fees):
-                raise ValueError("Fees must be in a decimal representation.")
-            fees = Fraction(fees)
-
-            fees_currency = row[9].strip()
-            if len(fees_currency) == 0:
-                raise ValueError("Fee currency must be non-empty.")
+            unit_quantity /= unit_quantity_denominator
+            unit_price /= unit_price_denominator
+            fees /= fees_denominator
+            # Sanity checks
+            assert isinstance(unit_quantity, Fraction)
+            assert isinstance(unit_price, Fraction)
+            assert isinstance(fees, Fraction)
 
             t = TradeInfo(
                     comment=comment,
@@ -231,6 +251,18 @@ class PortfolioTracker:
 
         return ret
         
-    def get_trades(self):
-        return self._read_trades_file()
+    def get_trades_as_df(self, trades_data=None):
+        """
+        Converts the trades data from the .get_trades() method into a dataframe.
+
+        Do note that all numbers are native Python Fraction objects rather than numpy types.
+
+        If called with trades_data == None, then this method will first get trades data from
+        the .get_trades() method before processing it into a dataframe.
+        """
+        if trades_data is None:
+            trades_data = self.get_trades()
+        assert isinstance(trades_data, list)
+        assert all(isinstance(x, TradeInfo) for x in trades_data)
+        return pd.DataFrame(trades_data).astype({"trade_date": np.datetime64})
 

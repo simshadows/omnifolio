@@ -11,13 +11,19 @@ This file does not contain any dependencies towards any other file within this c
 """
 
 import os
+import re
+import copy
 import logging
 import json
+
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
 _CWD = os.getcwd()
 _ENCODING = "utf-8"
+
+re_decimal = re.compile(r"^\d*[.,]?\d*$")
 
 def mkdir_recursive(relfilepath):
     absfilepath = os.path.join(_CWD, relfilepath)
@@ -45,4 +51,14 @@ def str_is_nonempty_and_compact(obj):
             and (len(obj) > 0)
             and (obj == obj.strip())
         )
+
+def pandas_index_union(iterable_obj):
+    ret = None
+    for index_obj in iterable_obj:
+        assert isinstance(index_obj, pd.Index)
+        if ret is None:
+            ret = copy.deepcopy(index_obj)
+        else:
+            ret = ret.union(index_obj)
+    return ret
 

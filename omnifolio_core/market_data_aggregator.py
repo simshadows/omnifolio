@@ -10,6 +10,8 @@ Defines the MarketDataAggregator class, which aggregates and stores data provide
 
 import copy
 import logging
+from fractions import Fraction
+from decimal import Decimal
 from collections import namedtuple
 
 import pandas as pd
@@ -20,7 +22,7 @@ from .market_data_store import MarketDataStore
 from .market_data_providers.yahoo_finance_lib import YahooFinanceLib
 
 from .exceptions import MissingData
-from .utils import str_is_nonempty_and_compact
+from .utils import str_is_nonempty_and_compact, pandas_index_union
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +79,7 @@ class MarketDataAggregator:
     ######################################################################################
 
     @staticmethod
-    def stock_timeseries_daily__convert_to_splitadjusted(dfs):
+    def stock_timeseries_daily__to_splitadjusted(dfs):
         """
         Takes in whatever stock_timeseries_daily() returns.
 
@@ -104,4 +106,81 @@ class MarketDataAggregator:
 
             ret[symbol] = df
         return ret
+
+    @staticmethod
+    def stock_timeseries_daily__to_adjclose_summary(dfs):
+        """
+        Summarizes important closing values from the data in dfs.
+
+        ---
+
+        Takes in whatever stock_timeseries_daily() returns.
+
+        Returns a single dataframe with two levels of column labels.
+
+        First level is the symbol itself.
+
+        Second level summarizes important columns at close:
+            - 'unit' as a string
+            - 'adjusted_close' as a Fraction
+            - 'exdividend' as a Fraction
+            - 'split' as a numpy double
+        Note that here, we actually express values as a single Fraction object instead of two
+        integer columns that represent a fraction.
+
+        (I'll be reconsidering whether or not Fraction objects are suitable versus pandas native
+        integers with explicit numerator/denominator arithmetic.)
+        """
+        assert isinstance(dfs, dict)
+        assert all(isinstance(k, str) and isinstance(v, pd.DataFrame) for (k, v) in dfs.items())
+        new_index = pandas_index_union(x.index for x in dfs.values())
+        new_cols = []
+        for (k, v) in dfs.items():
+            new_cols.append(v["unit"].rename((k, "unit")).reindex(index=new_index))
+
+            op1 = lambda x : Fraction(numerator=x["adjusted_close"], denominator=x["price_denominator"])
+            new_cols.append(v.apply(op1, axis="columns").reindex(index=new_index).rename((k, "adjusted_close")))
+
+            op2 = lambda x : Fraction(numerator=x["exdividend"], denominator=x["dividend_denominator"])
+            new_cols.append(v.apply(op2, axis="columns").reindex(index=new_index).rename((k, "exdividend")))
+
+            new_cols.append(v["split"].reindex(index=new_index).rename((k, "split")))
+        return pd.concat(new_cols, axis="columns")
+
+    @staticmethod
+    def stock_timeseries_daily__to_debugging_adjclose(dfs):
+        """
+        Takes in whatever stock_timeseries_daily() returns.
+
+        Returns a single dataframe, merging adjusted close prices for all symbols from dfs.
+
+        The output is not intended for machine use.
+        It's used for debugging, to quickly glance through whether or not the values are as expected.
+        """
+        assert isinstance(dfs, dict)
+        assert all(isinstance(k, str) and isinstance(v, pd.DataFrame) for (k, v) in dfs.items())
+        new_index = pandas_index_union(x.index for x in dfs.values())
+        new_cols = []
+        for (k, v) in dfs.items():
+            op = lambda x : Decimal(x["adjusted_close"]) / Decimal(x["price_denominator"])
+            new_cols.append(v.apply(op, axis="columns").reindex(index=new_index, fill_value="-").rename(k))
+        return pd.concat(new_cols, axis="columns")
+
+    ## Currently Unused
+    #@staticmethod
+    #def stock_timeseries_daily__to_adjcloseprice_table(dfs):
+    #    """
+    #    Takes in whatever stock_timeseries_daily() returns.
+
+    #    Returns a single dataframe, merging adjusted close prices for all symbols from dfs.
+    #    """
+    #    assert isinstance(dfs, dict)
+    #    assert all(isinstance(k, str) and isinstance(v, pd.DataFrame) for (k, v) in dfs.items())
+    #    new_index = pandas_index_union(x.index for x in dfs.values())
+    #    new_cols = []
+    #    for (k, v) in dfs.items():
+    #        new_cols.append(v["adjusted_close"].rename((k, "numerator")).reindex(index=new_index, fill_value=-1))
+    #        new_cols.append(v["price_denominator"].rename((k, "denominator")).reindex(index=new_index, fill_value=0))
+    #        new_cols.append(v["unit"].rename((k, "unit")).reindex(index=new_index, fill_value="[N/A]"))
+    #    return pd.concat(new_cols, axis="columns")
 

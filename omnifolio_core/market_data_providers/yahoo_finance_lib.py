@@ -163,7 +163,8 @@ class YahooFinanceLib(MarketDataProvider):
                     "exdividend":     _NUMPY_INT,
                     "split":          _NUMPY_FLOAT,
                 }
-            new_df[list(new_column_types.keys())] = new_df[list(new_column_types.keys())].round(decimals=0)
+            int_cols_to_retype = list(k for (k, v) in new_column_types.items() if (v is _NUMPY_INT))
+            new_df[int_cols_to_retype] = new_df[int_cols_to_retype].round(decimals=0)
             new_df = new_df.astype(new_column_types)
 
             # Add some new columns
