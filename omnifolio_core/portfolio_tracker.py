@@ -353,6 +353,7 @@ class PortfolioTracker:
             trade_detail = deepcopy(trade)
             portfolio_state, disposals = self._generate_portfolio_state_and_disposals(trade_detail, prev_portfolio_state)
             portfolio_state_statistics = self._generate_portfolio_state_statistics(portfolio_state)
+            trade_statistics = self._generate_trade_statistics(disposals)
 
             prev_portfolio_state = portfolio_state
 
@@ -364,8 +365,9 @@ class PortfolioTracker:
                     # State of the portfolio after the corresponding trade
                     "portfolio_state": portfolio_state,
 
-                    # Statistics derived from the portfolio state
+                    # Statistics derived from the trade and portfolio state data
                     "portfolio_state_statistics": portfolio_state_statistics,
+                    "trade_statistics": trade_statistics,
                 }
             history.append(entry)
 
@@ -422,7 +424,7 @@ class PortfolioTracker:
                             "unit_price_of_disposal": deepcopy(trade_detail.unit_price),
                             "unit_currency": deepcopy(holding["unit_currency"]),
                             "fees_per_unit_of_acquisition": deepcopy(holding["fees_per_unit"]),
-                            "fees_per_unit_of_disposal": fee_per_unit_of_disposal,
+                            "fees_per_unit_of_disposal": deepcopy(fee_per_unit_of_disposal),
                             "fees_currency": deepcopy(holding["fees_currency"]),
                         }
                     disposed_units["stock_holdings"].append(disposal)
@@ -443,7 +445,7 @@ class PortfolioTracker:
                             "unit_price_of_disposal": deepcopy(trade_detail.unit_price),
                             "unit_currency": holding["unit_currency"],
                             "fees_per_unit_of_acquisition": holding["fees_per_unit"],
-                            "fees_per_unit_of_disposal": fee_per_unit_of_disposal,
+                            "fees_per_unit_of_disposal": deepcopy(fee_per_unit_of_disposal),
                             "fees_currency": holding["fees_currency"],
                         }
                     disposed_units["stock_holdings"].append(disposal)
@@ -490,6 +492,30 @@ class PortfolioTracker:
 
         return {
                 "stock_holdings": stock_holdings_stats
+            }
+
+    @staticmethod
+    def _generate_trade_statistics(disposals):
+        assert isinstance(disposals, dict)
+
+        # This function's logic will definitely need to be changed when I deal with other asset classes.
+
+        stock_disposals = disposals["stock_holdings"]
+        assert isinstance(stock_disposals, list)
+
+        total_cg_without_fees = Fraction(0)
+        total_cg_without_fees_currency = stock_disposals[0]["unit_currency"] if (len(stock_disposals) > 0) else "[unknown]"
+        total_fees = Fraction(0)
+        total_fees_currency = stock_disposals[0]["fees_currency"] if (len(stock_disposals) > 0) else "[unknown]"
+        for d in disposals["stock_holdings"]:
+            qty = d["unit_quantity"]
+            total_cg_without_fees += (d["unit_price_of_disposal"] - d["unit_price_of_acquisition"]) * qty
+            total_fees += (d["fees_per_unit_of_disposal"] + d["fees_per_unit_of_acquisition"]) * qty
+        return {
+                "total_capital_gain_without_fees": total_cg_without_fees,
+                "total_capital_gain_without_fees_currency": total_cg_without_fees_currency,
+                "total_fees": total_fees,
+                "total_fees_currency": total_fees_currency,
             }
 
     def _dump_portfolio_history_debugging_file(self, obj):
