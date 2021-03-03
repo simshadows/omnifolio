@@ -7,11 +7,11 @@ License:  GNU Affero General Public License v3 (AGPL-3.0)
 """
 
 import os
-import copy
 import re
 import logging
 import csv
 import datetime
+from copy import deepcopy
 from collections import namedtuple, defaultdict
 from fractions import Fraction
 from itertools import chain
@@ -227,6 +227,7 @@ class PortfolioTracker:
 
             ric_symbol = _only_allow_nonempty_str(row[3], "RIC symbol")
             trade_type = row[4].strip()
+
             if trade_type not in _ALLOWED_TRADE_TYPE_STRINGS:
                 raise ValueError("Trade types must be either 'buy' or 'sell'.")
 
@@ -234,12 +235,27 @@ class PortfolioTracker:
             unit_price = _only_allow_decimal_rep(row[6], "Unit price")
             unit_currency = _only_allow_nonempty_str(row[7], "Unit currency")
 
+            if unit_quantity <= 0:
+                raise ValueError("Unit quantity must be greater than zero.")
+            if unit_price < 0:
+                raise ValueError("Unit price must not be negative.")
+
             fees = _only_allow_decimal_rep(row[8], "Fees")
             fees_currency = _only_allow_nonempty_str(row[9], "Fees currency")
+
+            if fees < 0:
+                raise ValueError("Fees must not be negative.")
 
             unit_quantity_denominator = _only_allow_decimal_rep(row[10], "Unit quantity denominator")
             unit_price_denominator = _only_allow_decimal_rep(row[11], "Unit price denominator")
             fees_denominator = _only_allow_decimal_rep(row[12], "Fees denominator")
+
+            if unit_quantity_denominator <= 0:
+                raise ValueError("Unit quantity denominator must be greater than zero.")
+            if unit_price_denominator <= 0:
+                raise ValueError("Unit price denominator must be greater than zero.")
+            if fees_denominator <= 0:
+                raise ValueError("Fees denominator must be greater than zero.")
 
             unit_quantity /= unit_quantity_denominator
             unit_price /= unit_price_denominator
@@ -266,6 +282,8 @@ class PortfolioTracker:
                 )
             ret.append(t)
 
+        if not sorted(ret, key=(lambda x : x.trade_date)):
+            raise ValueError("Trades must be in chronological order.")
         return ret
         
     ## No longer used
@@ -297,7 +315,7 @@ class PortfolioTracker:
     #    if trades_df is None:
     #        trades_df = self.get_trades_as_df()
     #    assert isinstance(trades_df, pd.DataFrame)
-    #    df = copy.deepcopy(trades_df)
+    #    df = deepcopy(trades_df)
     #    pandas_add_column_level_above(df, "trades", inplace=True)
 
     #    symbols_present = set(df["trades"]["ric_symbol"])
@@ -317,24 +335,36 @@ class PortfolioTracker:
 
         If called with trades_data == None, then this method will first get trades data from
         the .get_trades() method before processing it into a dataframe.
+
+        TODO: Consider implementing some kind of lazy data structure.
         """
         if trades_data is None:
             trades_data = self.get_trades()
         assert isinstance(trades_data, list)
 
         history = []
+        prev_portfolio_state = {
+                # "stock_holdings": {account : {symbol : [trades]}}
+                "stock_holdings": defaultdict(lambda : defaultdict(list)),
+            }
+
         for trade in trades_data:
             assert isinstance(trade, TradeInfo)
-            trade_detail = copy.deepcopy(trade)
+            trade_detail = deepcopy(trade)
+            portfolio_state = self._generate_portfolio_state(trade_detail, prev_portfolio_state)
+            portfolio_state_statistics = self._generate_portfolio_state_statistics(portfolio_state)
+
+            prev_portfolio_state = portfolio_state
+
             entry = {
                     # Details of the corresponding trade
                     "trade_detail": trade_detail,
 
                     # State of the portfolio after the corresponding trade
-                    "portfolio_state": self._generate_portfolio_state(trade_detail),
+                    "portfolio_state": portfolio_state,
 
                     # Statistics derived from the portfolio state
-                    "portfolio_state_statistics": "not_yet_implemented",
+                    "portfolio_state_statistics": portfolio_state_statistics,
                 }
             history.append(entry)
 
@@ -345,17 +375,78 @@ class PortfolioTracker:
     ######################################################################################
 
     @staticmethod
-    def _generate_portfolio_state(trade_detail):
+    def _generate_portfolio_state(trade_detail, prev_state):
         assert isinstance(trade_detail, TradeInfo)
-        stock_holdings = {}
+        assert isinstance(prev_state, dict)
+
+        ret = deepcopy(prev_state)
+
         if trade_detail.trade_type == "buy":
-            pass
+            d = {
+                    "acquired_on": trade_detail.trade_date,
+                    "unit_quantity": trade_detail.unit_quantity,
+                    "unit_price": trade_detail.unit_price,
+                    "unit_currency": trade_detail.unit_currency,
+                    "fees_per_unit": (trade_detail.fees / trade_detail.unit_quantity),
+                    "fees_currency": trade_detail.fees_currency,
+                }
+            ret["stock_holdings"][trade_detail.account][trade_detail.ric_symbol].append(d)
         elif trade_detail.trade_type == "sell":
-            pass
+            # TODO: Implement custom sell strategy.
+            #       This current one is a simple LIFO strategy, ignoring any CGT discount rules.
+
+            holdings_list = ret["stock_holdings"][trade_detail.account][trade_detail.ric_symbol]
+
+            yet_to_dispose = deepcopy(trade_detail.unit_quantity)
+            assert yet_to_dispose > 0
+
+            while yet_to_dispose > 0:
+                d = holdings_list[-1]
+                if d["unit_quantity"] > yet_to_dispose:
+                    d["unit_quantity"] -= yet_to_dispose
+                    yet_to_dispose = Fraction(0)
+                elif d["unit_quantity"] <= yet_to_dispose:
+                    yet_to_dispose -= d["unit_quantity"]
+                    del holdings_list[-1]
+
+            if yet_to_dispose > 0:
+                raise ValueError("Attempted to sell more units than owned.")
+            elif yet_to_dispose < 0:
+                raise RuntimeError("Unexpected negative value for 'yet_to_dispose'.")
         else:
             raise RuntimeError("Unexpected trade type.")
+
+        return ret
+
+    @staticmethod
+    def _generate_portfolio_state_statistics(curr_state):
+        assert isinstance(curr_state, dict)
+
+        def shs_process_parcels(parcel_list):
+            total_units = Fraction(0)
+            total_price_before_fees = Fraction(0)
+            total_fees = Fraction(0)
+            unit_currency = parcel_list[0]["unit_currency"] if (len(parcel_list) > 0) else "[unknown]"
+            fees_currency = parcel_list[0]["fees_currency"] if (len(parcel_list) > 0) else "[unknown]"
+            for d in parcel_list:
+                if (d["unit_currency"] != unit_currency) or (d["fees_currency"] != fees_currency):
+                    raise NotImplementedError("This codebase is not yet equipped to handle currency changes of a holding.")
+                total_units += d["unit_quantity"]
+                total_price_before_fees += (d["unit_price"] * d["unit_quantity"])
+                total_fees += (d["fees_per_unit"] * d["unit_quantity"])
+            return {
+                    "total_units": total_units,
+                    "total_price_before_fees": total_price_before_fees,
+                    "total_price_before_fees_currency": unit_currency,
+                    "total_fees": total_fees,
+                    "total_fees_currency": fees_currency,
+                }
+        def shs_process_symbols(d):
+            return {k: shs_process_parcels(v) for (k, v) in d.items()}
+        stock_holdings_stats = {k: shs_process_symbols(v) for (k, v) in curr_state["stock_holdings"].items()}
+
         return {
-                "stock_holdings": stock_holdings,
+                "stock_holdings": stock_holdings_stats
             }
 
     def _dump_portfolio_history_debugging_file(self, obj):
