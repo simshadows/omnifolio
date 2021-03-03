@@ -35,7 +35,8 @@ class MarketDataStore:
     _STOCK_TIMESERIES_DAILY__FILEPATH = "stock_timeseries_daily.db"
 
     def __init__(self, config):
-        self._market_data_store_path = config["market_data_store_path"]
+        # TODO: Set the directory name somewhere else.
+        self._market_data_store_path = os.path.join(config["generated_data_path"], "market_data_store")
         return
 
     @staticmethod

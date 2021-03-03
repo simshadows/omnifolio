@@ -3,6 +3,7 @@ config.json
 config.json.backup
 tmp.txt
 _user_data/
+_generated_data/
 
 ##########################################################################################
 

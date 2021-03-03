@@ -22,8 +22,7 @@ _DEFAULT_CONFIG = {
     "iex_cloud_api_key": "",
     "rapidapi_api_key": "",
     "user_data_path": "./_user_data",
-    "market_data_store_path": "./_user_data/market_data_store",
-    "debugging_path": "./_user_data/debugging",
+    "generated_data_path": "./_generated_data",
 }
 
 _CONFIG_TYPES = {
@@ -31,8 +30,7 @@ _CONFIG_TYPES = {
     "iex_cloud_api_key": str,
     "rapidapi_api_key": str,
     "user_data_path": str,
-    "market_data_store_path": str,
-    "debugging_path": str,
+    "generated_data_path": str,
 }
 
 logger = logging.getLogger(__name__)

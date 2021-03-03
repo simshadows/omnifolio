@@ -12,7 +12,7 @@ import re
 import logging
 import csv
 import datetime
-from collections import namedtuple
+from collections import namedtuple, defaultdict
 from fractions import Fraction
 from itertools import chain
 
@@ -173,7 +173,9 @@ class PortfolioTracker:
 
     def __init__(self, config=get_config()):
         self._user_data_path = config["user_data_path"]
-        self._debugging_path = config["debugging_path"]
+
+        # TODO: Set the directory name somewhere else.
+        self._debugging_path = os.path.join(config["generated_data_path"], "debugging")
         return
 
     def get_trades(self):
@@ -320,27 +322,41 @@ class PortfolioTracker:
             trades_data = self.get_trades()
         assert isinstance(trades_data, list)
 
-        # First, we copy just the trades into a barebones list structure.
         history = []
         for trade in trades_data:
             assert isinstance(trade, TradeInfo)
-            entry = {"trade_detail": copy.deepcopy(trade)}
+            trade_detail = copy.deepcopy(trade)
+            entry = {
+                    # Details of the corresponding trade
+                    "trade_detail": trade_detail,
+
+                    # State of the portfolio after the corresponding trade
+                    "portfolio_state": self._generate_portfolio_state(trade_detail),
+
+                    # Statistics derived from the portfolio state
+                    "portfolio_state_statistics": "not_yet_implemented",
+                }
             history.append(entry)
-
-        # Now, we calculate all states of the portfolio.
-        for entry in history:
-            ps = entry["portfolio_state"] = {}
-            pc = entry["portfolio_change"] = {}
-            t = entry["trade_detail"]
-
-            ps["not_implemented"] = "not_implemented"
-            pc["not_implemented"] = "not_implemented"
 
         self._dump_portfolio_history_debugging_file(history)
         return history
 
     ######################################################################################
     ######################################################################################
+
+    @staticmethod
+    def _generate_portfolio_state(trade_detail):
+        assert isinstance(trade_detail, TradeInfo)
+        stock_holdings = {}
+        if trade_detail.trade_type == "buy":
+            pass
+        elif trade_detail.trade_type == "sell":
+            pass
+        else:
+            raise RuntimeError("Unexpected trade type.")
+        return {
+                "stock_holdings": stock_holdings,
+            }
 
     def _dump_portfolio_history_debugging_file(self, obj):
         filepath = os.path.join(
