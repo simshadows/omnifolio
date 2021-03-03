@@ -351,7 +351,7 @@ class PortfolioTracker:
         for trade in trades_data:
             assert isinstance(trade, TradeInfo)
             trade_detail = deepcopy(trade)
-            portfolio_state = self._generate_portfolio_state(trade_detail, prev_portfolio_state)
+            portfolio_state, disposals = self._generate_portfolio_state_and_disposals(trade_detail, prev_portfolio_state)
             portfolio_state_statistics = self._generate_portfolio_state_statistics(portfolio_state)
 
             prev_portfolio_state = portfolio_state
@@ -359,6 +359,7 @@ class PortfolioTracker:
             entry = {
                     # Details of the corresponding trade
                     "trade_detail": trade_detail,
+                    "disposed_in_this_trade": disposals,
 
                     # State of the portfolio after the corresponding trade
                     "portfolio_state": portfolio_state,
@@ -375,11 +376,14 @@ class PortfolioTracker:
     ######################################################################################
 
     @staticmethod
-    def _generate_portfolio_state(trade_detail, prev_state):
+    def _generate_portfolio_state_and_disposals(trade_detail, prev_state):
         assert isinstance(trade_detail, TradeInfo)
         assert isinstance(prev_state, dict)
 
-        ret = deepcopy(prev_state)
+        curr_state = deepcopy(prev_state)
+        disposed_units = {
+                "stock_holdings": []
+            }
 
         if trade_detail.trade_type == "buy":
             d = {
@@ -390,23 +394,58 @@ class PortfolioTracker:
                     "fees_per_unit": (trade_detail.fees / trade_detail.unit_quantity),
                     "fees_currency": trade_detail.fees_currency,
                 }
-            ret["stock_holdings"][trade_detail.account][trade_detail.ric_symbol].append(d)
+            curr_state["stock_holdings"][trade_detail.account][trade_detail.ric_symbol].append(d)
         elif trade_detail.trade_type == "sell":
             # TODO: Implement custom sell strategy.
             #       This current one is a simple LIFO strategy, ignoring any CGT discount rules.
 
-            holdings_list = ret["stock_holdings"][trade_detail.account][trade_detail.ric_symbol]
+            holdings_list = curr_state["stock_holdings"][trade_detail.account][trade_detail.ric_symbol]
 
             yet_to_dispose = deepcopy(trade_detail.unit_quantity)
             assert yet_to_dispose > 0
 
+            fee_per_unit_of_disposal = trade_detail.fees / yet_to_dispose
+
             while yet_to_dispose > 0:
-                d = holdings_list[-1]
-                if d["unit_quantity"] > yet_to_dispose:
-                    d["unit_quantity"] -= yet_to_dispose
+                holding = holdings_list[-1]
+                if holding["unit_quantity"] > yet_to_dispose:
+                    holding["unit_quantity"] -= yet_to_dispose
+
+                    # Add new disposal
+                    disposal = {
+                            "acquired_on": deepcopy(holding["acquired_on"]),
+                            "disposed_on": deepcopy(trade_detail.trade_date),
+                            "unit_quantity": yet_to_dispose, # No need to copy because we're reassigning later anyway
+                            "unit_price_of_acquisition": deepcopy(holding["unit_price"]),
+                            "unit_price_of_disposal": deepcopy(trade_detail.unit_price),
+                            "unit_currency": deepcopy(holding["unit_currency"]),
+                            "fees_per_unit_of_acquisition": deepcopy(holding["fees_per_unit"]),
+                            "fees_per_unit_of_disposal": fee_per_unit_of_disposal,
+                            "fees_currency": deepcopy(holding["fees_currency"]),
+                        }
+                    disposed_units["stock_holdings"].append(disposal)
+
+                    # Update yet_to_dispose
                     yet_to_dispose = Fraction(0)
-                elif d["unit_quantity"] <= yet_to_dispose:
-                    yet_to_dispose -= d["unit_quantity"]
+
+                elif holding["unit_quantity"] <= yet_to_dispose:
+
+                    # Add new disposal
+                    disposal = {
+                            "acquired_on": holding["acquired_on"],
+                            "disposed_on": deepcopy(trade_detail.trade_date),
+                            "unit_quantity": holding["unit_quantity"],
+                            "unit_price_of_acquisition": holding["unit_price"],
+                            "unit_price_of_disposal": deepcopy(trade_detail.unit_price),
+                            "unit_currency": holding["unit_currency"],
+                            "fees_per_unit_of_acquisition": holding["fees_per_unit"],
+                            "fees_per_unit_of_disposal": fee_per_unit_of_disposal,
+                            "fees_currency": holding["fees_currency"],
+                        }
+                    disposed_units["stock_holdings"].append(disposal)
+
+                    # Update yet_to_dispose and holdings_list
+                    yet_to_dispose -= holding["unit_quantity"]
                     del holdings_list[-1]
 
             if yet_to_dispose > 0:
@@ -416,7 +455,7 @@ class PortfolioTracker:
         else:
             raise RuntimeError("Unexpected trade type.")
 
-        return ret
+        return (curr_state, disposed_units)
 
     @staticmethod
     def _generate_portfolio_state_statistics(curr_state):
