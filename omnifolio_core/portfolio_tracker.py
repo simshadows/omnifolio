@@ -414,6 +414,7 @@ class PortfolioTracker:
                     # Add new disposal
                     disposal = {
                             "ric_symbol": trade_detail.ric_symbol,
+                            "account": trade_detail.account,
                             "acquired_on": deepcopy(holding["acquired_on"]),
                             "disposed_on": deepcopy(trade_detail.trade_date),
                             "unit_quantity": yet_to_dispose, # No need to copy because we're reassigning later anyway
@@ -434,6 +435,7 @@ class PortfolioTracker:
                     # Add new disposal
                     disposal = {
                             "ric_symbol": trade_detail.ric_symbol,
+                            "account": trade_detail.account,
                             "acquired_on": holding["acquired_on"],
                             "disposed_on": deepcopy(trade_detail.trade_date),
                             "unit_quantity": holding["unit_quantity"],
