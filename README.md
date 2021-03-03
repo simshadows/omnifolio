@@ -35,11 +35,19 @@ I'm also considering splitting the market aggregation/caching functionality into
 
 ## Major Issues
 
+### Libraries using floating point to represent decimal values in finance
+
 Currently, the only data provider I'm using is the `yfinance` library.
 
 Unfortunately, it presents currency data in a floating point data type, which has been *insanely nightmarish* to work with due to imprecision when representing decimal numbers with decimal places. My adapter code that calls this library attempts to make the best estimate it can based on the data provided, but it's impossible to get it perfectly right. For penny stocks (which trade with sub-cent spreads) and dividend payouts (which are often calculated with many decimal places), the numbers will be (painfully) imprecise.
 
 I might consider calling the Yahoo Finance API directly instead in the future, though I'll just use the `yfinance` library for now since it's easier. I also don't have that many options for free data sources, but I'll continue on the lookout for more reliable free APIs and data sources to include as a data provider for this project.
+
+### Potential loss of precision from the use of `fractions.Fraction` and `decimal.Decimal`
+
+I currently have no checks in place for whether a `fractions.Fraction` or `decimal.Decimal` operation will result in loss of precision.
+
+This will need to be audited for in the future. But until this is solved, please don't use this codebase for critical applications.
 
 ## License
 

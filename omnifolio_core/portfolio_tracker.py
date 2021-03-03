@@ -20,10 +20,22 @@ import pandas as pd
 import numpy as np
 
 from .config import get_config
-from .utils import re_decimal
+from .utils import (
+        re_decimal,
+        fwrite_json,
+        str_is_nonempty_and_compact,
+        fraction_to_decimal,
+        create_json_writable_debugging_structure
+    )
 
 logger = logging.getLogger(__name__)
 
+
+_NUMPY_INT = np.longlong
+_NUMPY_FLOAT = np.double
+
+_INT_MAX = np.iinfo(_NUMPY_INT).max
+assert np.iinfo(_NUMPY_INT).bits >= 64
 
 TradeInfo = namedtuple(
     "TradeInfo",
@@ -157,8 +169,11 @@ class PortfolioTracker:
 
     _TRADES__FILEPATH = "trades.csv"
 
+    _PORTFOLIO_HISTORY_DEBUGGING__FILEPATH = "portfolio_history.json"
+
     def __init__(self, config=get_config()):
         self._user_data_path = config["user_data_path"]
+        self._debugging_path = config["debugging_path"]
         return
 
     def get_trades(self):
@@ -251,11 +266,52 @@ class PortfolioTracker:
 
         return ret
         
-    def get_trades_as_df(self, trades_data=None):
-        """
-        Converts the trades data from the .get_trades() method into a dataframe.
+    ## No longer used
+    #def get_trades_as_df(self, trades_data=None):
+    #    """
+    #    Converts the trades data from the .get_trades() method into a dataframe.
 
-        Do note that all numbers are native Python Fraction objects rather than numpy types.
+    #    Do note that all numbers are native Python Fraction objects rather than numpy types.
+
+    #    If called with trades_data == None, then this method will first get trades data from
+    #    the .get_trades() method before processing it into a dataframe.
+    #    """
+    #    if trades_data is None:
+    #        trades_data = self.get_trades()
+    #    assert isinstance(trades_data, list)
+    #    assert all(isinstance(x, TradeInfo) for x in trades_data)
+    #    return pd.DataFrame(trades_data).astype({"trade_date": np.datetime64})
+
+    ## No longer used
+    #def get_portfolio_holdings_history(self, trades_df=None):
+    #    """
+    #    Calculates a full portfolio holdings history.
+
+    #    trades_df is whatever is returned by .get_trades_as_df().
+
+    #    Alternatively, if called with trades_df == None, then this method will first get trades
+    #    data from the .get_trades_as_df() method before processing it.
+    #    """
+    #    if trades_df is None:
+    #        trades_df = self.get_trades_as_df()
+    #    assert isinstance(trades_df, pd.DataFrame)
+    #    df = copy.deepcopy(trades_df)
+    #    pandas_add_column_level_above(df, "trades", inplace=True)
+
+    #    symbols_present = set(df["trades"]["ric_symbol"])
+    #    if "trades" in symbols_present:
+    #        raise ValueError("'trades' is a reserved word that cannot be used as a symbol here.")
+
+    #    for symbol in symbols_present:
+    #        assert str_is_nonempty_and_compact(symbol)
+    #        df.insert(len(df.columns), (symbol, "quantity"), Fraction(0))
+    #        df.insert(len(df.columns), (symbol, "total_purchase_price"), Fraction(0))
+
+    #    return df
+
+    def get_portfolio_history(self, trades_data=None):
+        """
+        Calculates an exact and detailed portfolio history.
 
         If called with trades_data == None, then this method will first get trades data from
         the .get_trades() method before processing it into a dataframe.
@@ -263,6 +319,34 @@ class PortfolioTracker:
         if trades_data is None:
             trades_data = self.get_trades()
         assert isinstance(trades_data, list)
-        assert all(isinstance(x, TradeInfo) for x in trades_data)
-        return pd.DataFrame(trades_data).astype({"trade_date": np.datetime64})
 
+        # First, we copy just the trades into a barebones list structure.
+        history = []
+        for trade in trades_data:
+            assert isinstance(trade, TradeInfo)
+            entry = {"trade_detail": copy.deepcopy(trade)}
+            history.append(entry)
+
+        # Now, we calculate all states of the portfolio.
+        for entry in history:
+            ps = entry["portfolio_state"] = {}
+            pc = entry["portfolio_change"] = {}
+            t = entry["trade_detail"]
+
+            ps["not_implemented"] = "not_implemented"
+            pc["not_implemented"] = "not_implemented"
+
+        self._dump_portfolio_history_debugging_file(history)
+        return history
+
+    ######################################################################################
+    ######################################################################################
+
+    def _dump_portfolio_history_debugging_file(self, obj):
+        filepath = os.path.join(
+                self._debugging_path,
+                self._PORTFOLIO_HISTORY_DEBUGGING__FILEPATH,
+            )
+        logging.debug(f"Writing portfolio debugging history file to '{filepath}'.")
+        fwrite_json(filepath, data=create_json_writable_debugging_structure(obj))
+        return
