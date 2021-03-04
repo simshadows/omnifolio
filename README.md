@@ -1,6 +1,6 @@
 # Omnifolio
 
-A Jupyter personal investment tracking template.
+A personal investment tracking tool, implemented as a Jupyter template.
 
 *This project is still very early in development.*
 
