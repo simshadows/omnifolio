@@ -351,9 +351,9 @@ class PortfolioTracker:
         for trade in trades_data:
             assert isinstance(trade, TradeInfo)
             trade_detail = deepcopy(trade)
-            portfolio_state, disposals = self._generate_portfolio_state_and_disposals(trade_detail, prev_portfolio_state)
-            portfolio_state_statistics = self._generate_portfolio_state_statistics(portfolio_state)
-            trade_statistics = self._generate_trade_statistics(disposals)
+            portfolio_state, disposals, acquisitions = self._generate_portfolio_state_and_diff(trade_detail, prev_portfolio_state)
+            portfolio_state_stats = self._generate_portfolio_state_stats(portfolio_state)
+            trade_stats = self._generate_trade_stats(disposals)
 
             prev_portfolio_state = portfolio_state
 
@@ -361,13 +361,17 @@ class PortfolioTracker:
                     # Details of the corresponding trade
                     "trade_detail": trade_detail,
                     "disposed_in_this_trade": disposals,
+                    "acquired_in_this_trade": acquisitions,
 
                     # State of the portfolio after the corresponding trade
                     "portfolio_state": portfolio_state,
 
                     # Statistics derived from the trade and portfolio state data
-                    "portfolio_state_statistics": portfolio_state_statistics,
-                    "trade_statistics": trade_statistics,
+                    "stats": {
+                        "portfolio_state": portfolio_state_stats,
+                        "portfolio_lifetime": "NOT_IMPLEMENTED",
+                        "trade": trade_stats,
+                    },
                 }
             history.append(entry)
 
@@ -378,13 +382,18 @@ class PortfolioTracker:
     ######################################################################################
 
     @staticmethod
-    def _generate_portfolio_state_and_disposals(trade_detail, prev_state):
+    def _generate_portfolio_state_and_diff(trade_detail, prev_state):
         assert isinstance(trade_detail, TradeInfo)
         assert isinstance(prev_state, dict)
 
         curr_state = deepcopy(prev_state)
-        disposed_units = {
-                "stock_holdings": []
+        disposed = {
+                "stock_holdings": [],
+                "currency": [],
+            }
+        acquired = {
+                "stock_holdings": [],
+                "currency": [],
             }
 
         if trade_detail.trade_type == "buy":
@@ -397,6 +406,27 @@ class PortfolioTracker:
                     "fees_currency": trade_detail.fees_currency,
                 }
             curr_state["stock_holdings"][trade_detail.account][trade_detail.ric_symbol].append(d)
+            
+            # Update acquisitions
+            d = deepcopy(d)
+            d["account"] = trade_detail.account
+            d["ric_symbol"] = trade_detail.ric_symbol
+            acquired["stock_holdings"].append(d)
+
+            # Update dispositions
+            d2 = {
+                    "currency": d["unit_currency"],
+                    "amount": d["unit_price"] * d["unit_quantity"],
+                }
+            d3 = {
+                    "currency": d["fees_currency"],
+                    "amount": d["fees_per_unit"] * d["unit_quantity"],
+                }
+            if d2["currency"] == d3["currency"]:
+                d2["amount"] += d3["amount"]
+            else:
+                disposed["currency"].append(d3)
+            disposed["currency"].append(d2)
         elif trade_detail.trade_type == "sell":
             # TODO: Implement custom sell strategy.
             #       This current one is a simple LIFO strategy, ignoring any CGT discount rules.
@@ -427,7 +457,7 @@ class PortfolioTracker:
                             "fees_per_unit_of_disposal": deepcopy(fee_per_unit_of_disposal),
                             "fees_currency": deepcopy(holding["fees_currency"]),
                         }
-                    disposed_units["stock_holdings"].append(disposal)
+                    disposed["stock_holdings"].append(disposal)
 
                     # Update yet_to_dispose
                     yet_to_dispose = Fraction(0)
@@ -448,7 +478,7 @@ class PortfolioTracker:
                             "fees_per_unit_of_disposal": deepcopy(fee_per_unit_of_disposal),
                             "fees_currency": holding["fees_currency"],
                         }
-                    disposed_units["stock_holdings"].append(disposal)
+                    disposed["stock_holdings"].append(disposal)
 
                     # Update yet_to_dispose and holdings_list
                     yet_to_dispose -= holding["unit_quantity"]
@@ -461,10 +491,10 @@ class PortfolioTracker:
         else:
             raise RuntimeError("Unexpected trade type.")
 
-        return (curr_state, disposed_units)
+        return (curr_state, disposed, acquired)
 
     @staticmethod
-    def _generate_portfolio_state_statistics(curr_state):
+    def _generate_portfolio_state_stats(curr_state):
         assert isinstance(curr_state, dict)
 
         def shs_process_parcels(parcel_list):
@@ -495,7 +525,7 @@ class PortfolioTracker:
             }
 
     @staticmethod
-    def _generate_trade_statistics(disposals):
+    def _generate_trade_stats(disposals):
         assert isinstance(disposals, dict)
 
         # This function's logic will definitely need to be changed when I deal with other asset classes.
@@ -512,8 +542,8 @@ class PortfolioTracker:
             total_cg_without_fees += (d["unit_price_of_disposal"] - d["unit_price_of_acquisition"]) * qty
             total_fees += (d["fees_per_unit_of_disposal"] + d["fees_per_unit_of_acquisition"]) * qty
         return {
-                "total_capital_gain_without_fees": total_cg_without_fees,
-                "total_capital_gain_without_fees_currency": total_cg_without_fees_currency,
+                "total_realized_capital_gain_without_fees": total_cg_without_fees,
+                "total_realized_capital_gain_without_fees_currency": total_cg_without_fees_currency,
                 "total_fees": total_fees,
                 "total_fees_currency": total_fees_currency,
             }

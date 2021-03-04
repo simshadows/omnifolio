@@ -1,8 +1,8 @@
 # Omnifolio
 
-I'm developing this into a portfolio aggregation tool of some sort.
+A Jupyter personal investment accounting template.
 
-For now, I'm just playing around things I'm considering using.
+*This project is still very early in development.*
 
 ## Disclaimer
 
@@ -23,16 +23,6 @@ pip install matplotlib
 pip install ipympl
 ```
 
-## Possible Paths Moving Forward
-
-Option 1: A template Jupyter notebook, and my own relevant tools for financial analysis.
-
-Option 2: A local web app.
-
-Option 3: Both?
-
-I'm also considering splitting the market aggregation/caching functionality into an entirely separate repository.
-
 ## Major Issues
 
 ### Libraries using floating point to represent decimal values in finance
@@ -47,7 +37,7 @@ I might consider calling the Yahoo Finance API directly instead in the future, t
 
 I currently have no checks in place for whether a `fractions.Fraction` or `decimal.Decimal` operation will result in loss of precision.
 
-This will need to be audited for in the future. But until this is solved, please don't use this codebase for critical applications.
+This will need to be audited for in the future.
 
 ## License
 
