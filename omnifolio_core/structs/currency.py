@@ -23,13 +23,27 @@ def _unary_magic_calc_op(method):
         return new
     return fn
 
-def _binary_magic_calc_op(method):
-    def fn(self, other):
-        self._err_if_same_symbol(other)
-        new = copy(self)
-        new._value = getattr(self._value, method)(other._value)
-        return new
-    return fn
+def _binary_magic_calc_op(method, mode):
+    assert isinstance(mode, str)
+    if mode == "only_with_dimensionless":
+        def fn(self, other):
+            if isinstance(other, Currency):
+                raise ValueError(f"'{method}' is not allowed between two Currency objects.")
+            new = copy(self)
+            new._value = getattr(self._value, method)(other)
+            return new
+        return fn
+    elif mode == "only_between_currencies":
+        def fn(self, other):
+            if not isinstance(other, Currency):
+                raise ValueError(f"'{method}' is only allowed to be used with another Currency object.")
+            self._err_if_same_symbol(other)
+            new = copy(self)
+            new._value = getattr(self._value, method)(other._value)
+            return new
+        return fn
+    else:
+        raise RuntimeError("Invalid mode.")
 
 def _binary_magic_comparison_op(method):
     def fn(self, other):
@@ -86,32 +100,23 @@ class Currency:
     __gt__ = _binary_magic_comparison_op("__gt__")
     __ge__ = _binary_magic_comparison_op("__ge__")
 
-    __add__      = _binary_magic_calc_op("__add__"     )
-    __sub__      = _binary_magic_calc_op("__sub__"     )
-    __mul__      = _binary_magic_calc_op("__mul__"     )
-    __truediv__  = _binary_magic_calc_op("__truediv__" )
-    __floordiv__ = _binary_magic_calc_op("__floordiv__")
-    __mod__      = _binary_magic_calc_op("__mod__"     )
-    __divmod__   = _binary_magic_calc_op("__divmod__"  )
-    __pow__      = _binary_magic_calc_op("__pow__"     )
+    __add__      = _binary_magic_calc_op("__add__"     , "only_between_currencies")
+    __sub__      = _binary_magic_calc_op("__sub__"     , "only_between_currencies")
+    __mul__      = _binary_magic_calc_op("__mul__"     , "only_with_dimensionless")
+    __truediv__  = _binary_magic_calc_op("__truediv__" , "only_with_dimensionless")
+    __floordiv__ = _binary_magic_calc_op("__floordiv__", "only_with_dimensionless")
+    __mod__      = _binary_magic_calc_op("__mod__"     , "only_with_dimensionless")
+    __divmod__   = _binary_magic_calc_op("__divmod__"  , "only_with_dimensionless")
+    __pow__      = _binary_magic_calc_op("__pow__"     , "only_with_dimensionless")
 
-    __radd__      = _binary_magic_calc_op("__radd__"     )
-    __rsub__      = _binary_magic_calc_op("__rsub__"     )
-    __rmul__      = _binary_magic_calc_op("__rmul__"     )
-    __rtruediv__  = _binary_magic_calc_op("__rtruediv__" )
-    __rfloordiv__ = _binary_magic_calc_op("__rfloordiv__")
-    __rmod__      = _binary_magic_calc_op("__rmod__"     )
-    __rdivmod__   = _binary_magic_calc_op("__rdivmod__"  )
-    __rpow__      = _binary_magic_calc_op("__rpow__"     )
-
-    #__iadd__      = _binary_magic_calc_op("__iadd__"     )
-    #__isub__      = _binary_magic_calc_op("__isub__"     )
-    #__imul__      = _binary_magic_calc_op("__imul__"     )
-    #__itruediv__  = _binary_magic_calc_op("__itruediv__" )
-    #__ifloordiv__ = _binary_magic_calc_op("__ifloordiv__")
-    #__imod__      = _binary_magic_calc_op("__imod__"     )
-    #__idivmod__   = _binary_magic_calc_op("__idivmod__"  )
-    #__ipow__      = _binary_magic_calc_op("__ipow__"     )
+    __radd__      = _binary_magic_calc_op("__radd__"     , "only_between_currencies")
+    __rsub__      = _binary_magic_calc_op("__rsub__"     , "only_between_currencies")
+    __rmul__      = _binary_magic_calc_op("__rmul__"     , "only_with_dimensionless")
+    __rtruediv__  = _binary_magic_calc_op("__rtruediv__" , "only_with_dimensionless")
+    __rfloordiv__ = _binary_magic_calc_op("__rfloordiv__", "only_with_dimensionless")
+    __rmod__      = _binary_magic_calc_op("__rmod__"     , "only_with_dimensionless")
+    __rdivmod__   = _binary_magic_calc_op("__rdivmod__"  , "only_with_dimensionless")
+    __rpow__      = _binary_magic_calc_op("__rpow__"     , "only_with_dimensionless")
 
     __neg__ = _unary_magic_calc_op("__neg__")
     __pos__ = _unary_magic_calc_op("__pos__")

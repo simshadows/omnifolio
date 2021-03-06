@@ -243,10 +243,8 @@ class PortfolioTracker:
                 total_fees += (d["fees_per_unit"] * d["unit_quantity"])
             return {
                     "total_units": total_units,
-                    "total_price_before_fees": total_price_before_fees,
-                    "total_price_before_fees_currency": unit_currency,
-                    "total_fees": total_fees,
-                    "total_fees_currency": fees_currency,
+                    "total_price_before_fees": Currency(unit_currency, total_price_before_fees),
+                    "total_fees": Currency(fees_currency, total_fees),
                 }
         def shs_process_symbols(d):
             return {k: shs_process_parcels(v) for (k, v) in d.items()}
