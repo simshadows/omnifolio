@@ -139,9 +139,7 @@ class PortfolioTracker:
                     "acquired_on": trade_detail.trade_date,
                     "unit_quantity": trade_detail.unit_quantity,
                     "unit_price": trade_detail.unit_price,
-                    "unit_currency": trade_detail.unit_currency,
-                    "fees_per_unit": (trade_detail.fees / trade_detail.unit_quantity),
-                    "fees_currency": trade_detail.fees_currency,
+                    "fees_per_unit": trade_detail.total_fees / trade_detail.unit_quantity,
                 }
             curr_state["stocks"][trade_detail.account][trade_detail.ric_symbol].append(d)
             
@@ -152,8 +150,8 @@ class PortfolioTracker:
             acquired["stocks"].append(d)
 
             # Update dispositions
-            d2 = Currency(d["unit_currency"], d["unit_price"] * d["unit_quantity"])
-            d3 = Currency(d["fees_currency"], d["fees_per_unit"] * d["unit_quantity"])
+            d2 = d["unit_price"] * d["unit_quantity"]
+            d3 = d["fees_per_unit"] * d["unit_quantity"]
             if d2.symbol == d3.symbol:
                 d2 += d3
             else:
@@ -168,7 +166,7 @@ class PortfolioTracker:
             yet_to_dispose = trade_detail.unit_quantity
             assert yet_to_dispose > 0
 
-            fee_per_unit_of_disposal = trade_detail.fees / yet_to_dispose
+            fee_per_unit_of_disposal = trade_detail.total_fees / yet_to_dispose
 
             while yet_to_dispose > 0:
                 holding = holdings_list[-1]
@@ -184,10 +182,8 @@ class PortfolioTracker:
                             "unit_quantity": yet_to_dispose, # No need to copy because we're reassigning later anyway
                             "unit_price_of_acquisition": holding["unit_price"],
                             "unit_price_of_disposal": trade_detail.unit_price,
-                            "unit_currency": holding["unit_currency"],
                             "fees_per_unit_of_acquisition": holding["fees_per_unit"],
                             "fees_per_unit_of_disposal": fee_per_unit_of_disposal,
-                            "fees_currency": holding["fees_currency"],
                         }
                     disposed["stocks"].append(disposal)
 
@@ -205,10 +201,8 @@ class PortfolioTracker:
                             "unit_quantity": holding["unit_quantity"],
                             "unit_price_of_acquisition": holding["unit_price"],
                             "unit_price_of_disposal": trade_detail.unit_price,
-                            "unit_currency": holding["unit_currency"],
                             "fees_per_unit_of_acquisition": holding["fees_per_unit"],
                             "fees_per_unit_of_disposal": fee_per_unit_of_disposal,
-                            "fees_currency": holding["fees_currency"],
                         }
                     disposed["stocks"].append(disposal)
 
@@ -233,14 +227,14 @@ class PortfolioTracker:
             total_units = Fraction(0)
             total_price_before_fees = Fraction(0)
             total_fees = Fraction(0)
-            unit_currency = parcel_list[0]["unit_currency"] if (len(parcel_list) > 0) else "[unknown]"
-            fees_currency = parcel_list[0]["fees_currency"] if (len(parcel_list) > 0) else "[unknown]"
+            unit_currency = parcel_list[0]["unit_price"].symbol if (len(parcel_list) > 0) else "???"
+            fees_currency = parcel_list[0]["fees_per_unit"].symbol if (len(parcel_list) > 0) else "???"
             for d in parcel_list:
-                if (d["unit_currency"] != unit_currency) or (d["fees_currency"] != fees_currency):
+                if (d["unit_price"].symbol != unit_currency) or (d["fees_per_unit"].symbol != fees_currency):
                     raise NotImplementedError("This codebase is not yet equipped to handle currency changes of a holding.")
                 total_units += d["unit_quantity"]
-                total_price_before_fees += (d["unit_price"] * d["unit_quantity"])
-                total_fees += (d["fees_per_unit"] * d["unit_quantity"])
+                total_price_before_fees += (d["unit_price"].value * d["unit_quantity"])
+                total_fees += (d["fees_per_unit"].value * d["unit_quantity"])
             return {
                     "total_units": total_units,
                     "total_price_before_fees": Currency(unit_currency, total_price_before_fees),
@@ -264,18 +258,16 @@ class PortfolioTracker:
         assert isinstance(stock_disposals, list)
 
         total_cg_without_fees = Fraction(0)
-        total_cg_without_fees_currency = stock_disposals[0]["unit_currency"] if (len(stock_disposals) > 0) else "[unknown]"
+        total_cg_without_fees_currency = stock_disposals[0]["unit_price_of_acquisition"].symbol if (len(stock_disposals) > 0) else "???"
         total_fees = Fraction(0)
-        total_fees_currency = stock_disposals[0]["fees_currency"] if (len(stock_disposals) > 0) else "[unknown]"
+        total_fees_currency = stock_disposals[0]["fees_per_unit_of_acquisition"].symbol if (len(stock_disposals) > 0) else "???"
         for d in disposals["stocks"]:
             qty = d["unit_quantity"]
-            total_cg_without_fees += (d["unit_price_of_disposal"] - d["unit_price_of_acquisition"]) * qty
-            total_fees += (d["fees_per_unit_of_disposal"] + d["fees_per_unit_of_acquisition"]) * qty
+            total_cg_without_fees += (d["unit_price_of_disposal"].value - d["unit_price_of_acquisition"].value) * qty
+            total_fees += (d["fees_per_unit_of_disposal"].value + d["fees_per_unit_of_acquisition"].value) * qty
         return {
-                "total_realized_capital_gain_without_fees": total_cg_without_fees,
-                "total_realized_capital_gain_without_fees_currency": total_cg_without_fees_currency,
-                "total_fees": total_fees,
-                "total_fees_currency": total_fees_currency,
+                "total_realized_capital_gain_without_fees": Currency(total_cg_without_fees_currency, total_cg_without_fees),
+                "total_fees": Currency(total_fees_currency, total_fees),
             }
 
     def _dump_portfolio_history_debugging_file(self, obj):

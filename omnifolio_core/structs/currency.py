@@ -91,7 +91,7 @@ class Currency:
         return f"Currency('{s}', {repr(self._value)})"
 
     def __str__(self):
-        return f"{self._symbol}[{fraction_to_decimal(self._value)}]"
+        return f"{self._symbol} {fraction_to_decimal(self._value)}"
 
     __lt__ = _binary_magic_comparison_op("__lt__")
     __le__ = _binary_magic_comparison_op("__le__")

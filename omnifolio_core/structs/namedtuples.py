@@ -22,10 +22,7 @@ TradeInfo = namedtuple(
 
         "unit_quantity",
         "unit_price",
-        "unit_currency",
-
-        "fees",
-        "fees_currency",
+        "total_fees",
     ],
 )
 

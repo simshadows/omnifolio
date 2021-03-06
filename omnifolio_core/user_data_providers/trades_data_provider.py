@@ -15,7 +15,7 @@ import datetime
 from fractions import Fraction
 from itertools import chain
 
-from ..structs import TradeInfo
+from ..structs import TradeInfo, Currency
 from ..utils import re_decimal
 
 logger = logging.getLogger(__name__)
@@ -228,11 +228,8 @@ def get_trades(user_data_path):
                 trade_type=trade_type,
 
                 unit_quantity=unit_quantity,
-                unit_price=unit_price,
-                unit_currency=unit_currency,
-
-                fees=fees,
-                fees_currency=fees_currency,
+                unit_price=Currency(unit_currency, unit_price),
+                total_fees=Currency(fees_currency, fees),
             )
         ret.append(t)
 
