@@ -115,8 +115,9 @@ def create_json_writable_debugging_structure(obj):
             return [create_json_writable_debugging_structure(x) for x in obj]
     elif isinstance(obj, list) or isinstance(obj, set):
         return [create_json_writable_debugging_structure(x) for x in obj]
-    obj_type_str = str(type(obj))
-    raise RuntimeError(f"{obj_type_str} is not a supported type by create_json_writable_debugging_structure().")
+    #obj_type_str = str(type(obj))
+    #raise RuntimeError(f"{obj_type_str} is not a supported type by create_json_writable_debugging_structure().")
+    return str(obj)
 
 def pandas_index_union(iterable_obj):
     ret = None

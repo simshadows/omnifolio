@@ -16,7 +16,10 @@ from fractions import Fraction
 from .user_data_providers.trades_data_provider import get_trades
 
 from .config import get_config
-from .structs import TradeInfo
+from .structs import (
+        TradeInfo,
+        Currency,
+    )
 from .utils import (
         fwrite_json,
         create_json_writable_debugging_structure
@@ -149,16 +152,10 @@ class PortfolioTracker:
             acquired["stocks"].append(d)
 
             # Update dispositions
-            d2 = {
-                    "currency": d["unit_currency"],
-                    "amount": d["unit_price"] * d["unit_quantity"],
-                }
-            d3 = {
-                    "currency": d["fees_currency"],
-                    "amount": d["fees_per_unit"] * d["unit_quantity"],
-                }
-            if d2["currency"] == d3["currency"]:
-                d2["amount"] += d3["amount"]
+            d2 = Currency(d["unit_currency"], d["unit_price"] * d["unit_quantity"])
+            d3 = Currency(d["fees_currency"], d["fees_per_unit"] * d["unit_quantity"])
+            if d2.symbol == d3.symbol:
+                d2 += d3
             else:
                 disposed["currency"].append(d3)
             disposed["currency"].append(d2)
