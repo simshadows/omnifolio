@@ -39,6 +39,12 @@ I currently have no checks in place for whether a `fractions.Fraction` or `decim
 
 This will need to be audited for in the future.
 
+### I have no idea how taxation works.
+
+If you sell, can you use cost bases from another brokerage account to calculate the realized capital gain?
+
+I'm gonna need to ask an accountant for this one.
+
 ## License
 
 All original source code is licensed under the [*GNU Affero General Public License v3.0*](https://www.gnu.org/licenses/agpl-3.0.en.html).

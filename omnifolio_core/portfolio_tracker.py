@@ -9,11 +9,12 @@ License:  GNU Affero General Public License v3 (AGPL-3.0)
 import os
 import logging
 import datetime
-from copy import deepcopy
+from copy import copy, deepcopy
 from collections import defaultdict
 from fractions import Fraction
 
 from .user_data_providers.trades_data_provider import get_trades
+from .portfolio_holdings import PortfolioHoldings
 
 from .config import get_config
 from .structs import (
@@ -73,28 +74,26 @@ class PortfolioTracker:
         if trade_history_iterable is None:
             trade_history_iterable = self.get_trades()
 
-        initial_portfolio_state = kwargs.get("initial_portfolio_state", self.get_blank_portfolio_state())
-        assert isinstance(initial_portfolio_state, dict)
+        portfolio_state = deepcopy(kwargs.get("initial_portfolio_state", PortfolioHoldings()))
+        assert isinstance(portfolio_state, PortfolioHoldings)
 
-        prev_portfolio_state = deepcopy(initial_portfolio_state)
         for individual_trade in trade_history_iterable:
             assert isinstance(individual_trade, TradeInfo)
-            trade_detail = deepcopy(individual_trade)
-            portfolio_state, disposals, acquisitions = self._generate_portfolio_state_and_diff(trade_detail, prev_portfolio_state)
-            portfolio_state_stats = self._generate_portfolio_state_stats(portfolio_state)
-            trade_stats = self._generate_trade_stats(disposals)
 
-            prev_portfolio_state = portfolio_state
+            trade_detail = deepcopy(individual_trade)
+            portfolio_diff = portfolio_state.trade(trade_detail)
+            portfolio_state_stats = portfolio_state.stats()
+            trade_stats = self._generate_trade_stats(portfolio_diff.disposed)
 
             entry = {
                     # Data from these fields are not cumulative.
                     # Thus, the caller must save this data themselves.
                     "trade_detail": trade_detail,
-                    "disposed_during_this_trade": disposals,
-                    "acquired_during_this_trade": acquisitions,
+                    "disposed_during_this_trade": portfolio_diff.disposed,
+                    "acquired_during_this_trade": portfolio_diff.acquired,
 
                     # Data from this field is cumulative.
-                    "portfolio_state": portfolio_state, # State of the portfolio after the corresponding trade
+                    "portfolio_state": deepcopy(portfolio_state),
 
                     # Data from this field is derived from all the other fields, and is provided for convenience.
                     # Ignoring it will not cause information loss.
@@ -107,146 +106,8 @@ class PortfolioTracker:
             yield entry
         return
 
-    @staticmethod
-    def get_blank_portfolio_state():
-        return {
-                # "stocks": {account : {symbol : [trades]}}
-                "stocks": defaultdict(lambda : defaultdict(list)),
-            }
-
     ######################################################################################
     ######################################################################################
-
-    @staticmethod
-    def _generate_portfolio_state_and_diff(trade_detail, prev_state):
-        assert isinstance(trade_detail, TradeInfo)
-        assert isinstance(prev_state, dict)
-
-        curr_state = deepcopy(prev_state)
-        disposed = {
-                "stocks": [],
-                "currency": [],
-                "cryptocurrency": "NOT_IMPLEMENTED",
-            }
-        acquired = {
-                "stocks": [],
-                "currency": [],
-                "cryptocurrency": "NOT_IMPLEMENTED",
-            }
-
-        if trade_detail.trade_type == "buy":
-            d = {
-                    "acquired_on": trade_detail.trade_date,
-                    "unit_quantity": trade_detail.unit_quantity,
-                    "unit_price": trade_detail.unit_price,
-                    "fees_per_unit": trade_detail.total_fees / trade_detail.unit_quantity,
-                }
-            curr_state["stocks"][trade_detail.account][trade_detail.ric_symbol].append(d)
-            
-            # Update acquisitions
-            d = deepcopy(d)
-            d["account"] = trade_detail.account
-            d["ric_symbol"] = trade_detail.ric_symbol
-            acquired["stocks"].append(d)
-
-            # Update dispositions
-            d2 = d["unit_price"] * d["unit_quantity"]
-            d3 = d["fees_per_unit"] * d["unit_quantity"]
-            if d2.symbol == d3.symbol:
-                d2 += d3
-            else:
-                disposed["currency"].append(d3)
-            disposed["currency"].append(d2)
-        elif trade_detail.trade_type == "sell":
-            # TODO: Implement custom sell strategy.
-            #       This current one is a simple LIFO strategy, ignoring any CGT discount rules.
-
-            holdings_list = curr_state["stocks"][trade_detail.account][trade_detail.ric_symbol]
-
-            yet_to_dispose = trade_detail.unit_quantity
-            assert yet_to_dispose > 0
-
-            fee_per_unit_of_disposal = trade_detail.total_fees / yet_to_dispose
-
-            while yet_to_dispose > 0:
-                holding = holdings_list[-1]
-                if holding["unit_quantity"] > yet_to_dispose:
-                    holding["unit_quantity"] -= yet_to_dispose
-
-                    # Add new disposal
-                    disposal = {
-                            "ric_symbol": trade_detail.ric_symbol,
-                            "account": trade_detail.account,
-                            "acquired_on": holding["acquired_on"],
-                            "disposed_on": trade_detail.trade_date,
-                            "unit_quantity": yet_to_dispose, # No need to copy because we're reassigning later anyway
-                            "unit_price_of_acquisition": holding["unit_price"],
-                            "unit_price_of_disposal": trade_detail.unit_price,
-                            "fees_per_unit_of_acquisition": holding["fees_per_unit"],
-                            "fees_per_unit_of_disposal": fee_per_unit_of_disposal,
-                        }
-                    disposed["stocks"].append(disposal)
-
-                    # Update yet_to_dispose
-                    yet_to_dispose = Fraction(0)
-
-                elif holding["unit_quantity"] <= yet_to_dispose:
-
-                    # Add new disposal
-                    disposal = {
-                            "ric_symbol": trade_detail.ric_symbol,
-                            "account": trade_detail.account,
-                            "acquired_on": holding["acquired_on"],
-                            "disposed_on": trade_detail.trade_date,
-                            "unit_quantity": holding["unit_quantity"],
-                            "unit_price_of_acquisition": holding["unit_price"],
-                            "unit_price_of_disposal": trade_detail.unit_price,
-                            "fees_per_unit_of_acquisition": holding["fees_per_unit"],
-                            "fees_per_unit_of_disposal": fee_per_unit_of_disposal,
-                        }
-                    disposed["stocks"].append(disposal)
-
-                    # Update yet_to_dispose and holdings_list
-                    yet_to_dispose -= holding["unit_quantity"]
-                    del holdings_list[-1]
-
-            if yet_to_dispose > 0:
-                raise ValueError("Attempted to sell more units than owned.")
-            elif yet_to_dispose < 0:
-                raise RuntimeError("Unexpected negative value for 'yet_to_dispose'.")
-        else:
-            raise RuntimeError("Unexpected trade type.")
-
-        return (curr_state, disposed, acquired)
-
-    @staticmethod
-    def _generate_portfolio_state_stats(curr_state):
-        assert isinstance(curr_state, dict)
-
-        def shs_process_parcels(parcel_list):
-            total_units = Fraction(0)
-            total_price_before_fees = Fraction(0)
-            total_fees = Fraction(0)
-            unit_currency = parcel_list[0]["unit_price"].symbol if (len(parcel_list) > 0) else "???"
-            fees_currency = parcel_list[0]["fees_per_unit"].symbol if (len(parcel_list) > 0) else "???"
-            for d in parcel_list:
-                if (d["unit_price"].symbol != unit_currency) or (d["fees_per_unit"].symbol != fees_currency):
-                    raise NotImplementedError("This codebase is not yet equipped to handle currency changes of a holding.")
-                total_units += d["unit_quantity"]
-                total_price_before_fees += (d["unit_price"].value * d["unit_quantity"])
-                total_fees += (d["fees_per_unit"].value * d["unit_quantity"])
-            return {
-                    "total_units": total_units,
-                    "total_price_before_fees": Currency(unit_currency, total_price_before_fees),
-                    "total_fees": Currency(fees_currency, total_fees),
-                }
-        def shs_process_symbols(d):
-            return {k: shs_process_parcels(v) for (k, v) in d.items()}
-        stock_holdings_stats = {k: shs_process_symbols(v) for (k, v) in curr_state["stocks"].items()}
-
-        return {
-                "stocks": stock_holdings_stats
-            }
 
     @staticmethod
     def _generate_trade_stats(disposals):
@@ -258,16 +119,20 @@ class PortfolioTracker:
         assert isinstance(stock_disposals, list)
 
         total_cg_without_fees = Fraction(0)
-        total_cg_without_fees_currency = stock_disposals[0]["unit_price_of_acquisition"].symbol if (len(stock_disposals) > 0) else "???"
-        total_fees = Fraction(0)
-        total_fees_currency = stock_disposals[0]["fees_per_unit_of_acquisition"].symbol if (len(stock_disposals) > 0) else "???"
+        total_cg_without_fees_currency = stock_disposals[0]["acquisition_unit_price"].symbol if (len(stock_disposals) > 0) else "???"
+        total_acq_fees = Fraction(0)
+        total_acq_fees_currency = stock_disposals[0]["acquisition_fees_per_unit"].symbol if (len(stock_disposals) > 0) else "???"
+        total_disp_fees = Fraction(0)
+        total_disp_fees_currency = stock_disposals[0]["disposal_fees_per_unit"].symbol if (len(stock_disposals) > 0) else "???"
         for d in disposals["stocks"]:
             qty = d["unit_quantity"]
-            total_cg_without_fees += (d["unit_price_of_disposal"].value - d["unit_price_of_acquisition"].value) * qty
-            total_fees += (d["fees_per_unit_of_disposal"].value + d["fees_per_unit_of_acquisition"].value) * qty
+            total_cg_without_fees += (d["disposal_unit_price"].value - d["acquisition_unit_price"].value) * qty
+            total_acq_fees += d["acquisition_fees_per_unit"].value * qty
+            total_disp_fees += d["disposal_fees_per_unit"].value * qty
         return {
                 "total_realized_capital_gain_without_fees": Currency(total_cg_without_fees_currency, total_cg_without_fees),
-                "total_fees": Currency(total_fees_currency, total_fees),
+                "total_fees_on_acquisition": Currency(total_acq_fees_currency, total_acq_fees),
+                "total_fees_on_disposal": Currency(total_disp_fees_currency, total_disp_fees),
             }
 
     def _dump_portfolio_history_debugging_file(self, obj):
@@ -276,6 +141,9 @@ class PortfolioTracker:
                 self._PORTFOLIO_HISTORY_DEBUGGING__FILEPATH,
             )
         logging.debug(f"Writing portfolio debugging history file to '{filepath}'.")
+        obj = [copy(x) for x in obj] # Copy only deep enough for our purposes
+        for entry in obj:
+            entry["portfolio_state"] = entry["portfolio_state"].get_holdings()
         fwrite_json(filepath, data=create_json_writable_debugging_structure(obj))
         return
 
