@@ -6,6 +6,9 @@ Author:   contact@simshadows.com
 License:  GNU Affero General Public License v3 (AGPL-3.0)
 """
 
-from .namedtuples import TradeInfo
+from .namedtuples import (
+        TradeInfo,
+        TradeDiff,
+    )
 from .currency import Currency
 

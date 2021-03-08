@@ -14,7 +14,7 @@ from collections import defaultdict
 from fractions import Fraction
 
 from .user_data_providers.trades_data_provider import get_trades
-from .portfolio_holdings import PortfolioHoldings
+from .portfolio_holdings_accwise_avg import PortfolioHoldingsAccwiseAvg
 
 from .config import get_config
 from .structs import (
@@ -74,16 +74,14 @@ class PortfolioTracker:
         if trade_history_iterable is None:
             trade_history_iterable = self.get_trades()
 
-        portfolio_state = deepcopy(kwargs.get("initial_portfolio_state", PortfolioHoldings()))
-        assert isinstance(portfolio_state, PortfolioHoldings)
+        portfolio_state = deepcopy(kwargs.get("initial_portfolio_state", PortfolioHoldingsAccwiseAvg()))
+        assert isinstance(portfolio_state, PortfolioHoldingsAccwiseAvg)
 
         for individual_trade in trade_history_iterable:
             assert isinstance(individual_trade, TradeInfo)
 
             trade_detail = deepcopy(individual_trade)
             portfolio_diff = portfolio_state.trade(trade_detail)
-            portfolio_state_stats = portfolio_state.stats()
-            trade_stats = self._generate_trade_stats(portfolio_diff.disposed)
 
             entry = {
                     # Data from these fields are not cumulative.
@@ -95,45 +93,20 @@ class PortfolioTracker:
                     # Data from this field is cumulative.
                     "portfolio_state": deepcopy(portfolio_state),
 
-                    # Data from this field is derived from all the other fields, and is provided for convenience.
-                    # Ignoring it will not cause information loss.
-                    "stats": {
-                        "portfolio_state": portfolio_state_stats,
-                        "portfolio_lifetime": "NOT_IMPLEMENTED",
-                        "trade": trade_stats,
-                    },
+                    # None of this is needed yet.
+                    ## Data from this field is derived from all the other fields, and is provided for convenience.
+                    ## Ignoring it will not cause information loss.
+                    #"stats": {
+                    #    "portfolio_state": "NOT_IMPLEMENTED",
+                    #    "portfolio_lifetime": "NOT_IMPLEMENTED",
+                    #    "trade": "NOT_IMPLEMENTED",
+                    #},
                 }
             yield entry
         return
 
     ######################################################################################
     ######################################################################################
-
-    @staticmethod
-    def _generate_trade_stats(disposals):
-        assert isinstance(disposals, dict)
-
-        # This function's logic will definitely need to be changed when I deal with other asset classes.
-
-        stock_disposals = disposals["stocks"]
-        assert isinstance(stock_disposals, list)
-
-        total_cg_without_fees = Fraction(0)
-        total_cg_without_fees_currency = stock_disposals[0]["acquisition_unit_price"].symbol if (len(stock_disposals) > 0) else "???"
-        total_acq_fees = Fraction(0)
-        total_acq_fees_currency = stock_disposals[0]["acquisition_fees_per_unit"].symbol if (len(stock_disposals) > 0) else "???"
-        total_disp_fees = Fraction(0)
-        total_disp_fees_currency = stock_disposals[0]["disposal_fees_per_unit"].symbol if (len(stock_disposals) > 0) else "???"
-        for d in disposals["stocks"]:
-            qty = d["unit_quantity"]
-            total_cg_without_fees += (d["disposal_unit_price"].value - d["acquisition_unit_price"].value) * qty
-            total_acq_fees += d["acquisition_fees_per_unit"].value * qty
-            total_disp_fees += d["disposal_fees_per_unit"].value * qty
-        return {
-                "total_realized_capital_gain_without_fees": Currency(total_cg_without_fees_currency, total_cg_without_fees),
-                "total_fees_on_acquisition": Currency(total_acq_fees_currency, total_acq_fees),
-                "total_fees_on_disposal": Currency(total_disp_fees_currency, total_disp_fees),
-            }
 
     def _dump_portfolio_history_debugging_file(self, obj):
         filepath = os.path.join(

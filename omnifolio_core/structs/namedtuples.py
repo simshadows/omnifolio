@@ -26,3 +26,11 @@ TradeInfo = namedtuple(
     ],
 )
 
+TradeDiff = namedtuple(
+    "TradeDiff",
+    [
+        "acquired",
+        "disposed",
+    ],
+)
+
