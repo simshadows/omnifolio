@@ -92,7 +92,12 @@ def create_json_writable_debugging_structure(obj):
 
     TODO: Consider checking for cycles.
     """
-    if isinstance(obj, str) or isinstance(obj, int) or isinstance(obj, float):
+    is_json_value = (isinstance(obj, str)
+                     or isinstance(obj, int)
+                     or isinstance(obj, float)
+                     or isinstance(obj, bool)
+                     or (obj is None))
+    if is_json_value:
         return obj
     elif isinstance(obj, date) or isinstance(obj, datetime):
         return obj.isoformat()

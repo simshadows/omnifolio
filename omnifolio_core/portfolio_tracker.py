@@ -14,7 +14,7 @@ from collections import defaultdict
 from fractions import Fraction
 
 from .user_data_providers.trades_data_provider import get_trades
-from .portfolio_holdings_accwise_avg import PortfolioHoldingsAccwiseAvg
+from .portfolio_holdings_avg_cost import PortfolioHoldingsAvgCost
 
 from .config import get_config
 from .structs import (
@@ -74,24 +74,35 @@ class PortfolioTracker:
         if trade_history_iterable is None:
             trade_history_iterable = self.get_trades()
 
-        portfolio_state = deepcopy(kwargs.get("initial_portfolio_state", PortfolioHoldingsAccwiseAvg()))
-        assert isinstance(portfolio_state, PortfolioHoldingsAccwiseAvg)
+        holdings_acc_avgs = deepcopy(kwargs.get("holdings_account_averages", PortfolioHoldingsAvgCost(lambda x : x.account)))
+        assert isinstance(holdings_acc_avgs, PortfolioHoldingsAvgCost)
+
+        holdings_global_avgs = deepcopy(kwargs.get("holdings_global_averages", PortfolioHoldingsAvgCost(lambda x : "")))
+        assert isinstance(holdings_global_avgs, PortfolioHoldingsAvgCost)
 
         for individual_trade in trade_history_iterable:
             assert isinstance(individual_trade, TradeInfo)
 
             trade_detail = deepcopy(individual_trade)
-            portfolio_diff = portfolio_state.trade(trade_detail)
+            acc_avgs_diff = holdings_acc_avgs.trade(trade_detail)
+            global_avgs_diff = holdings_global_avgs.trade(trade_detail)
 
             entry = {
                     # Data from these fields are not cumulative.
                     # Thus, the caller must save this data themselves.
                     "trade_detail": trade_detail,
-                    "disposed_during_this_trade": portfolio_diff.disposed,
-                    "acquired_during_this_trade": portfolio_diff.acquired,
 
-                    # Data from this field is cumulative.
-                    "portfolio_state": deepcopy(portfolio_state),
+                    "account_averages": {
+                        "holdings": deepcopy(holdings_acc_avgs),
+                        "disposed_during_this_trade": acc_avgs_diff.disposed,
+                        "acquired_during_this_trade": acc_avgs_diff.acquired,
+                    },
+                    "global_averages": {
+                        "holdings": deepcopy(holdings_global_avgs),
+                        "disposed_during_this_trade": global_avgs_diff.disposed,
+                        "acquired_during_this_trade": global_avgs_diff.acquired,
+                    },
+
 
                     # None of this is needed yet.
                     ## Data from this field is derived from all the other fields, and is provided for convenience.
@@ -116,7 +127,8 @@ class PortfolioTracker:
         logging.debug(f"Writing portfolio debugging history file to '{filepath}'.")
         obj = [copy(x) for x in obj] # Copy only deep enough for our purposes
         for entry in obj:
-            entry["portfolio_state"] = entry["portfolio_state"].get_holdings()
+            entry["account_averages"]["holdings"] = entry["account_averages"]["holdings"].get_holdings()
+            entry["global_averages"]["holdings"] = entry["global_averages"]["holdings"].get_holdings()
         fwrite_json(filepath, data=create_json_writable_debugging_structure(obj))
         return
 

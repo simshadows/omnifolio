@@ -25,6 +25,12 @@ pip install ipympl
 
 ## Major Issues
 
+### No tax accounting has been yet.
+
+For now, this project is purely logical accounting, for personal purposes.
+
+I'll figure out how to make it useful for taxation purposes later.
+
 ### Libraries using floating point to represent decimal values in finance
 
 Currently, the only data provider I'm using is the `yfinance` library.

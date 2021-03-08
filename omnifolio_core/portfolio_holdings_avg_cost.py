@@ -1,13 +1,15 @@
 # -*- coding: ascii -*-
 
 """
-Filename: portfolio_holdings_accwise_avg.py
+Filename: portfolio_holdings_avg_cost.py
 Author:   contact@simshadows.com
 License:  GNU Affero General Public License v3 (AGPL-3.0)
 
 PortfolioHoldingsAvgCost encapsulates the moment-to-moment state of a portfolio's holdings.
 
-In particular, it tracks holdings using the average cost method for each account.
+In particular, it tracks holdings using the average cost method for each group.
+
+Group is determined by group_fn. This is explained in the __init__ documentation below.
 """
 
 import os
@@ -29,14 +31,28 @@ from .utils import (
 
 logger = logging.getLogger(__name__)
 
-class PortfolioHoldingsAccwiseAvg:
+class PortfolioHoldingsAvgCost:
 
     __slots__ = [
+            "_group_fn",
             "_stocks",
         ]
 
-    def __init__(self):
-        self._stocks = defaultdict(dict) # {account : {symbol : {}}}
+    def __init__(self, group_fn):
+        """
+        group_fn is a function that takes a TradeInfo object to determine which group a trade
+        belongs to.
+
+        group_fn receives only one argument of TradeInfo type, and returns the group the trade
+        belongs to, as a string.
+
+        In particular,
+            group_fn=lambda x : x.account
+        will group by account.
+        """
+        assert callable(group_fn)
+        self._group_fn = group_fn
+        self._stocks = defaultdict(dict) # {group : {symbol : {}}}
         return
 
     def trade(self, trade_detail):
@@ -62,20 +78,20 @@ class PortfolioHoldingsAccwiseAvg:
 
         if trade_detail.trade_type == "buy":
             
-            if trade_detail.ric_symbol in self._stocks[trade_detail.account]:
-                d = self._stocks[trade_detail.account][trade_detail.ric_symbol]
+            if trade_detail.ric_symbol in self._stocks[self._group_fn(trade_detail)]:
+                d = self._stocks[self._group_fn(trade_detail)][trade_detail.ric_symbol]
                 d["total_value"] += trade_detail.unit_price * trade_detail.unit_quantity
                 d["total_fees"] += trade_detail.total_fees
                 d["unit_quantity"] += trade_detail.unit_quantity
             else:
-                self._stocks[trade_detail.account][trade_detail.ric_symbol] = {
+                self._stocks[self._group_fn(trade_detail)][trade_detail.ric_symbol] = {
                         "total_value": trade_detail.unit_price * trade_detail.unit_quantity,
                         "total_fees": trade_detail.total_fees,
                         "unit_quantity": trade_detail.unit_quantity,
                     }
 
             acquired["stocks"].append({
-                    "account": trade_detail.account,
+                    "account": None, # Not applicable for this accounting method.
                     "ric_symbol": trade_detail.ric_symbol,
                     "acquisition_date": trade_detail.trade_date,
 
@@ -92,7 +108,7 @@ class PortfolioHoldingsAccwiseAvg:
 
         elif trade_detail.trade_type == "sell":
 
-            d = self._stocks[trade_detail.account][trade_detail.ric_symbol]
+            d = self._stocks[self._group_fn(trade_detail)][trade_detail.ric_symbol]
 
             remaining_units = d["unit_quantity"] - trade_detail.unit_quantity
             if remaining_units < 0:
@@ -105,7 +121,7 @@ class PortfolioHoldingsAccwiseAvg:
             acquisition_fees_per_unit = d["total_fees"] / d["unit_quantity"]
 
             disposed["stocks"].append({
-                    "account": trade_detail.account,
+                    "account": None, # Not applicable for this accounting method.
                     "ric_symbol": trade_detail.ric_symbol,
 
                     "acquisition_date": None, # Not applicable for this accounting method.
@@ -132,9 +148,9 @@ class PortfolioHoldingsAccwiseAvg:
                 d["unit_quantity"] = remaining_units
             else:
                 assert remaining_units == 0
-                del (self._stocks[trade_detail.account])[trade_detail.ric_symbol]
-                if len(self._stocks[trade_detail.account]) == 0:
-                    del self._stocks[trade_detail.account]
+                del (self._stocks[self._group_fn(trade_detail)])[trade_detail.ric_symbol]
+                if len(self._stocks[self._group_fn(trade_detail)]) == 0:
+                    del self._stocks[self._group_fn(trade_detail)]
 
         return TradeDiff(acquired=acquired, disposed=disposed)
 
@@ -142,11 +158,4 @@ class PortfolioHoldingsAccwiseAvg:
         return {
                 "stocks": deepcopy(self._stocks),
             }
-
-    def _prune_stock_symbol(self, account, symbol):
-        if len(self._stocks[account][symbol]) == 0:
-            del (self._stocks[account])[symbol]
-            if len(self._stocks[account]) == 0:
-                del self._stocks[account]
-        return
 
