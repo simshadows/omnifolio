@@ -16,6 +16,7 @@ from fractions import Fraction
 import numpy as np
 import pandas as pd
 
+from .market_data_aggregator import MarketDataAggregator
 from .user_data_providers.trades_data_provider import get_trades
 from .portfolio_holdings_avg_cost import PortfolioHoldingsAvgCost
 
@@ -26,7 +27,8 @@ from .structs import (
     )
 from .utils import (
         fwrite_json,
-        create_json_writable_debugging_structure
+        create_json_writable_debugging_structure,
+        pandas_add_column_level_above,
     )
 
 logger = logging.getLogger(__name__)
@@ -62,7 +64,7 @@ class PortfolioTracker:
         self._dump_portfolio_history_debugging_file(history)
         return history
 
-    def get_summary_dataframe(self, full_trade_history=None):
+    def get_holdings_summary_dataframe(self, full_trade_history=None):
         """
         Returns a summary of holdings, using the global average cost method.
 
@@ -114,6 +116,51 @@ class PortfolioTracker:
             fill("cumulative", "total_fees_paid", Currency("USD", 0))
 
         return (df, symbols)
+
+    def get_portfolio_value_history_dataframe(self, full_trade_history=None, update_store=True):
+
+        # TODO: This code is currently unable to handle splits/consolidations. Fix this!
+
+        (summary_df, symbols) = self.get_holdings_summary_dataframe(full_trade_history=full_trade_history)
+        market_data_source = MarketDataAggregator()
+
+        market_data_df = market_data_source.stock_timeseries_daily(list(symbols), update_store=update_store)
+        market_data_df = market_data_source.stock_timeseries_daily__to_adjclose_summary(market_data_df)
+        pandas_add_column_level_above(market_data_df, "prices", inplace=True)
+        df = market_data_df.join(summary_df)
+        df.fillna(method="ffill", inplace=True)
+
+        market_value_sers = []
+        for symbol in symbols:
+            factor = 1.0 if symbol.endswith(".AX") else 1.3 # Temporary fix until I figure out forex
+            mv_ser = df.loc[:,("prices", symbol, "adjusted_close")] * df.loc[:,("stocks", symbol, "unit_quantity")] * factor
+            market_value_sers.append(mv_ser)
+        market_value_ser = sum(market_value_sers)
+
+        principal_sers = []
+        for symbol in symbols:
+            factor = 1.0 if symbol.endswith(".AX") else 1.3 # Temporary fix until I figure out forex
+            def cur_col(i0, i2):
+                tmp = df.loc[:,(i0, symbol, i2)].fillna(value=Currency("USD", 0))
+                return tmp.apply(lambda x : x.value, convert_dtype=False)
+
+            p_ser = cur_col("stocks", "total_value")
+            p_ser += cur_col("stocks", "total_fees")
+            p_ser -= cur_col("cumulative", "total_realized_capital_gain_before_fees")
+            p_ser += cur_col("cumulative", "total_fees_paid")
+            p_ser -= (df.loc[:,("prices", symbol, "exdividend")] * df.loc[:,("stocks", symbol, "unit_quantity")]).cumsum()
+            p_ser *= factor
+            principal_sers.append(p_ser)
+        principal_ser = sum(principal_sers)
+
+        all_sers = {
+                "market_value": market_value_ser,
+                "principal": principal_ser,
+                "scaled_market_value": market_value_ser / principal_ser,
+            }
+        new_df = pd.concat(all_sers, axis="columns")
+
+        return new_df
 
     ######################################################################################
     ######################################################################################

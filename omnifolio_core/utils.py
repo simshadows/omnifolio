@@ -163,6 +163,6 @@ def pandas_add_column_level_above(df, new_level_name, *, inplace):
         raise NotImplementedError("inplace=False operation is not yet implemented.")
     assert isinstance(df, pd.DataFrame)
     assert isinstance(new_level_name, str)
-    df.columns = pd.MultiIndex.from_product([[new_level_name], df.columns])
+    df.columns = pd.MultiIndex.from_tuples([(new_level_name,) + tuple(x) for x in df.columns])
     return df
 
