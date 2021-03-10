@@ -13,6 +13,9 @@ from copy import copy, deepcopy
 from collections import defaultdict
 from fractions import Fraction
 
+import numpy as np
+import pandas as pd
+
 from .user_data_providers.trades_data_provider import get_trades
 from .portfolio_holdings_avg_cost import PortfolioHoldingsAvgCost
 
@@ -46,7 +49,7 @@ class PortfolioTracker:
         """
         return get_trades(self._user_data_path)
 
-    def get_portfolio_history(self, full_trade_history=None):
+    def get_full_portfolio_history(self, full_trade_history=None):
         """
         Calculates an exact and detailed portfolio history.
 
@@ -58,6 +61,59 @@ class PortfolioTracker:
         history = [x for x in self.generate_portfolio_history(full_trade_history)]
         self._dump_portfolio_history_debugging_file(history)
         return history
+
+    def get_summary_dataframe(self, full_trade_history=None):
+        """
+        Returns a summary of holdings, using the global average cost method.
+
+        Returned object is a tuple, where:
+            [0] is the dataframe, and
+            [1] is the complete set of symbols.
+        """
+        raw = self._generate_data_for_summary_dataframe(full_trade_history)
+        index = []
+        data = []
+        symbols = set()
+
+        # Purely for debugging
+        debugging_cum_symbols = set()
+
+        for (k, v) in raw.items():
+            d = {("comment", "", ""): v["comment"]}
+            for (symbol, holding_data) in v["stocks"].items():
+                if len(holding_data) > 0:
+                    symbols.add(symbol)
+                for (k2, v2) in holding_data.items():
+                    d[("stocks", symbol, k2)] = v2
+            for (symbol, cumulative_data) in v["cumulative"].items():
+                if len(cumulative_data) > 0:
+                    debugging_cum_symbols.add(symbol)
+                for (k2, v2) in cumulative_data.items():
+                    d[("cumulative", symbol, k2)] = v2
+            index.append(k)
+            data.append(d)
+
+        assert symbols == debugging_cum_symbols
+
+        df = pd.DataFrame(data=data, index=index)
+        df.index.rename("date")
+
+        new_index = df.index.astype("datetime64[ns]")
+        new_columns = pd.MultiIndex.from_tuples(df.columns)
+        df = df.reindex(columns=new_columns, index=new_index)
+
+        # Now, we fill missing data
+        for symbol in symbols:
+            def fill(i0, i2, value):
+                col = (i0, symbol, i2)
+                df.loc[:,col] = df.loc[:,col].fillna(value=value)
+            fill("stocks", "total_value", Currency("USD", 0))
+            fill("stocks", "total_fees", Currency("USD", 0))
+            fill("stocks", "unit_quantity", Fraction(0))
+            fill("cumulative", "total_realized_capital_gain_before_fees", Currency("USD", 0))
+            fill("cumulative", "total_fees_paid", Currency("USD", 0))
+
+        return (df, symbols)
 
     ######################################################################################
     ######################################################################################
@@ -118,6 +174,59 @@ class PortfolioTracker:
 
     ######################################################################################
     ######################################################################################
+
+    def _generate_data_for_summary_dataframe(self, full_trade_history):
+        data = {}
+
+        new_cumulative_entry = lambda : {
+                "total_realized_capital_gain_before_fees": None,
+                "total_fees_paid": None,
+            }
+        cumulative = {} # {ric_symbol: {}}
+
+        for curr_state in self.generate_portfolio_history(full_trade_history):
+            date = curr_state["trade_detail"].trade_date
+            assert isinstance(date, datetime.date)
+
+            ric_symbol = curr_state["trade_detail"].ric_symbol
+            assert isinstance(ric_symbol, str)
+
+            fees = curr_state["trade_detail"].total_fees
+            assert isinstance(fees, Currency)
+
+            all_value_gain = []
+            for disposal in curr_state["global_averages"]["disposed_during_this_trade"]["stocks"]:
+                if ric_symbol != disposal["ric_symbol"]:
+                    raise ValueError("At this point in development, it is not expected to dispose multiple symbols in one trade.")
+                value_gain = (disposal["disposal_unit_price"] - disposal["acquisition_unit_price"]) * disposal["unit_quantity"]
+                assert isinstance(value_gain, Currency)
+                all_value_gain.append(value_gain)
+
+            if len(all_value_gain) > 1:
+                raise ValueError("At this point in development, it is not expected to see multiple disposal entries in one.")
+            elif len(all_value_gain) == 1:
+                all_value_gain = all_value_gain[0]
+            else:
+                assert len(all_value_gain) == 0
+                all_value_gain = Currency(curr_state["trade_detail"].unit_price.symbol, 0)
+
+            if ric_symbol in cumulative:
+                cumulative[ric_symbol]["total_realized_capital_gain_before_fees"] += all_value_gain
+                cumulative[ric_symbol]["total_fees_paid"] += fees
+            else:
+                cumulative[ric_symbol] = {
+                        "total_realized_capital_gain_before_fees": all_value_gain,
+                        "total_fees_paid": fees,
+                    }
+
+            d = {
+                    "comment": curr_state["trade_detail"].comment,
+                    "stocks": curr_state["global_averages"]["holdings"].get_holdings()["stocks"][""],
+                    "cumulative": cumulative,
+                }
+            data[date] = d
+
+        return data
 
     def _dump_portfolio_history_debugging_file(self, obj):
         filepath = os.path.join(

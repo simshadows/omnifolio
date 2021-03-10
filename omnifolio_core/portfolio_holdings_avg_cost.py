@@ -100,7 +100,7 @@ class PortfolioHoldingsAvgCost:
                     "unit_quantity": trade_detail.unit_quantity,
                 })
 
-            assert trade_detail.unit_price > 0
+            assert trade_detail.unit_price >= 0
             assert trade_detail.total_fees >= 0
             disposed["currency"].append(trade_detail.unit_price * trade_detail.unit_quantity)
             if trade_detail.total_fees > 0:
@@ -135,7 +135,7 @@ class PortfolioHoldingsAvgCost:
                     "unit_quantity": trade_detail.unit_quantity,
                 })
 
-            assert trade_detail.unit_price > 0
+            assert trade_detail.unit_price >= 0
             assert trade_detail.total_fees >= 0
             acquired["currency"].append(trade_detail.unit_price * trade_detail.unit_quantity)
             if trade_detail.total_fees > 0:
