@@ -8,6 +8,7 @@ License:  GNU Affero General Public License v3 (AGPL-3.0)
 Defines the MarketDataAggregator class, which aggregates and stores data provided by MarketDataProvider.
 """
 
+import os
 import copy
 import logging
 from fractions import Fraction
@@ -22,7 +23,11 @@ from .market_data_store import MarketDataStore
 from .market_data_providers.yahoo_finance_lib import YahooFinanceLib
 
 from .exceptions import MissingData
-from .utils import str_is_nonempty_and_compact, pandas_index_union
+from .utils import (
+        str_is_nonempty_and_compact,
+        pandas_index_union,
+        dump_df_to_csv_debugging_file,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +37,9 @@ class MarketDataAggregator:
 
     def __init__(self, config=get_config()):
         self._config = config
+
+        # TODO: Set the directory name somewhere else.
+        self._debugging_path = os.path.join(config["generated_data_path"], "debugging")
 
         self._providers = [
                 YahooFinanceLib(),
@@ -107,8 +115,7 @@ class MarketDataAggregator:
             ret[symbol] = df
         return ret
 
-    @staticmethod
-    def stock_timeseries_daily__to_adjclose_summary(dfs):
+    def stock_timeseries_daily__to_adjclose_summary(self, dfs):
         """
         Summarizes important closing values from the data in dfs.
 
@@ -145,7 +152,10 @@ class MarketDataAggregator:
             new_cols.append(v.apply(op2, axis="columns").reindex(index=new_index).rename((k, "exdividend")))
 
             new_cols.append(v["split"].reindex(index=new_index).rename((k, "split")))
-        return pd.concat(new_cols, axis="columns")
+
+        df = pd.concat(new_cols, axis="columns")
+        dump_df_to_csv_debugging_file(df, self._debugging_path, "stock_timeseries_daily__to_adjclose_summary_dataframe.csv")
+        return df
 
     @staticmethod
     def stock_timeseries_daily__to_debugging_adjclose(dfs):

@@ -29,6 +29,7 @@ from .utils import (
         fwrite_json,
         create_json_writable_debugging_structure,
         pandas_add_column_level_above,
+        dump_df_to_csv_debugging_file,
     )
 
 logger = logging.getLogger(__name__)
@@ -115,6 +116,7 @@ class PortfolioTracker:
             fill("cumulative", "total_realized_capital_gain_before_fees", Currency("USD", 0))
             fill("cumulative", "total_fees_paid", Currency("USD", 0))
 
+        dump_df_to_csv_debugging_file(df, self._debugging_path, "holdings_summary_dataframe.csv")
         return (df, symbols)
 
     def get_portfolio_value_history_dataframe(self, full_trade_history=None, update_store=True):
@@ -122,13 +124,24 @@ class PortfolioTracker:
         # TODO: This code is currently unable to handle splits/consolidations. Fix this!
 
         (summary_df, symbols) = self.get_holdings_summary_dataframe(full_trade_history=full_trade_history)
-        market_data_source = MarketDataAggregator()
 
+        market_data_source = MarketDataAggregator()
         market_data_df = market_data_source.stock_timeseries_daily(list(symbols), update_store=update_store)
         market_data_df = market_data_source.stock_timeseries_daily__to_adjclose_summary(market_data_df)
         pandas_add_column_level_above(market_data_df, "prices", inplace=True)
         df = market_data_df.join(summary_df)
+        assert df.index.is_monotonic
+
         df.fillna(method="ffill", inplace=True)
+        for symbol in symbols:
+            def fill(i2, val):
+                df.loc[:,("prices", symbol, i2)] = df.loc[:,("prices", symbol, i2)].fillna(value=val)
+            fill("unit", "USD")
+            fill("adjusted_close", Fraction(0))
+            fill("exdividend", Fraction(0))
+            fill("split", Fraction(1))
+
+        dump_df_to_csv_debugging_file(df, self._debugging_path, "portfolio_value_history_dataframe_intermediate.csv")
 
         market_value_sers = []
         for symbol in symbols:
@@ -157,9 +170,11 @@ class PortfolioTracker:
                 "market_value": market_value_ser,
                 "principal": principal_ser,
                 "scaled_market_value": market_value_ser / principal_ser,
+                "net_profit": market_value_ser - principal_ser,
             }
         new_df = pd.concat(all_sers, axis="columns")
 
+        dump_df_to_csv_debugging_file(new_df, self._debugging_path, "portfolio_value_history_dataframe.csv")
         return new_df
 
     ######################################################################################
@@ -269,7 +284,7 @@ class PortfolioTracker:
             d = {
                     "comment": curr_state["trade_detail"].comment,
                     "stocks": curr_state["global_averages"]["holdings"].get_holdings()["stocks"][""],
-                    "cumulative": cumulative,
+                    "cumulative": deepcopy(cumulative),
                 }
             data[date] = d
 
@@ -286,5 +301,18 @@ class PortfolioTracker:
             entry["account_averages"]["holdings"] = entry["account_averages"]["holdings"].get_holdings()
             entry["global_averages"]["holdings"] = entry["global_averages"]["holdings"].get_holdings()
         fwrite_json(filepath, data=create_json_writable_debugging_structure(obj))
+        return
+
+    def _dump_df_to_csv_debugging_file(self, df, filename):
+        assert isinstance(df, pd.DataFrame)
+        assert isinstance(filename, str)
+
+        filepath = os.path.join(
+                self._debugging_path,
+                filename,
+            )
+        logging.debug(f"Writing to debugging file '{filepath}'.")
+        with open(filepath, "w") as f:
+            f.write(df.dropna(how="all").to_csv())
         return
 

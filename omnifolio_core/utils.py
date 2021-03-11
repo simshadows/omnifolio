@@ -166,3 +166,16 @@ def pandas_add_column_level_above(df, new_level_name, *, inplace):
     df.columns = pd.MultiIndex.from_tuples([(new_level_name,) + tuple(x) for x in df.columns])
     return df
 
+def dump_df_to_csv_debugging_file(df, debugging_path, filename):
+    assert isinstance(df, pd.DataFrame)
+    assert isinstance(filename, str)
+
+    filepath = os.path.join(
+            debugging_path,
+            filename,
+        )
+    logging.debug(f"Writing to debugging file '{filepath}'.")
+    with open(filepath, "w") as f:
+        f.write(df.dropna(how="all").to_csv())
+    return
+
