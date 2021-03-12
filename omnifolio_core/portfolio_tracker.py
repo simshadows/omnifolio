@@ -143,39 +143,179 @@ class PortfolioTracker:
 
         dump_df_to_csv_debugging_file(df, self._debugging_path, "portfolio_value_history_dataframe_intermediate.csv")
 
+        def sum_currency_col(i0, i2):
+            sers = []
+            for symbol in symbols:
+                coef = 1.0 if symbol.endswith(".AX") else 1.3 # Temporary fix until I figure out forex
+                ser = df.loc[:,(i0, symbol, i2)].fillna(value=Currency("USD", 0))
+                ser = ser.apply(lambda x : x.value, convert_dtype=False)
+                ser *= coef
+                sers.append(ser)
+            return sum(sers)
+
         market_value_sers = []
         for symbol in symbols:
-            factor = 1.0 if symbol.endswith(".AX") else 1.3 # Temporary fix until I figure out forex
-            mv_ser = df.loc[:,("prices", symbol, "adjusted_close")] * df.loc[:,("stocks", symbol, "unit_quantity")] * factor
+            coef = 1.0 if symbol.endswith(".AX") else 1.3 # Temporary fix until I figure out forex
+            mv_ser = df.loc[:,("prices", symbol, "adjusted_close")] * df.loc[:,("stocks", symbol, "unit_quantity")] * coef
             market_value_sers.append(mv_ser)
         market_value_ser = sum(market_value_sers)
 
-        principal_sers = []
-        for symbol in symbols:
-            factor = 1.0 if symbol.endswith(".AX") else 1.3 # Temporary fix until I figure out forex
-            def cur_col(i0, i2):
-                tmp = df.loc[:,(i0, symbol, i2)].fillna(value=Currency("USD", 0))
-                return tmp.apply(lambda x : x.value, convert_dtype=False)
+        purchase_price_before_fees_ser = sum_currency_col("stocks", "total_value")
+        purchase_fees_ser = sum_currency_col("stocks", "total_fees")
+        realized_capital_gain_ser = sum_currency_col("cumulative", "total_realized_capital_gain_before_fees")
+        total_fees_paid_ser = sum_currency_col("cumulative", "total_fees_paid")
 
-            p_ser = cur_col("stocks", "total_value")
-            p_ser += cur_col("stocks", "total_fees")
-            p_ser -= cur_col("cumulative", "total_realized_capital_gain_before_fees")
-            p_ser += cur_col("cumulative", "total_fees_paid")
-            p_ser -= (df.loc[:,("prices", symbol, "exdividend")] * df.loc[:,("stocks", symbol, "unit_quantity")]).cumsum()
-            p_ser *= factor
-            principal_sers.append(p_ser)
-        principal_ser = sum(principal_sers)
+        dividend_gain_sers = []
+        for symbol in symbols:
+            coef = 1.0 if symbol.endswith(".AX") else 1.3 # Temporary fix until I figure out forex
+            dg_ser = (df.loc[:,("prices", symbol, "exdividend")] * df.loc[:,("stocks", symbol, "unit_quantity")]).cumsum()
+            dividend_gain_sers.append(dg_ser)
+        dividend_gain_ser = sum(dividend_gain_sers)
+
+        base_value_ser = (
+                purchase_price_before_fees_ser
+                - realized_capital_gain_ser
+                - dividend_gain_ser
+                + total_fees_paid_ser
+            )
 
         all_sers = {
                 "market_value": market_value_ser,
-                "principal": principal_ser,
-                "scaled_market_value": market_value_ser / principal_ser,
-                "net_profit": market_value_ser - principal_ser,
+                "proportion_net_profit": market_value_ser / base_value_ser,
+                "net_profit": market_value_ser - base_value_ser,
+                "all_fees": total_fees_paid_ser,
+                "base_value": base_value_ser,
+
+                # TODO: Calculate purchase fees and past fees. (i.e. fees considered bound
+                # to existing holdings, and fees bound to sold holdings.)
+
+                "purchase_price_before_fees": purchase_price_before_fees_ser,
+                #"purchase_fees": purchase_fees_ser,
+                "realized_capital_gain": realized_capital_gain_ser,
+                "dividend_gain": dividend_gain_ser,
+                #"past_fees": past_fees_ser,
             }
-        new_df = pd.concat(all_sers, axis="columns")
+        new_df = pd.concat(all_sers, axis="columns").dropna(how="any")
 
         dump_df_to_csv_debugging_file(new_df, self._debugging_path, "portfolio_value_history_dataframe.csv")
         return new_df
+
+    def add_benchmarks_to_value_history_dataframe(self, df, benchmark_symbols, update_store=True):
+        """
+        Adds benchmarks to a portfolio value history dataframe.
+
+        Benchmarks run a simulation using your trading history where instead of buying/selling
+        what you actually bought, it instead buys/sells the benchmark security instead.
+
+        All benchmark values assume your fees are the same as your actual trading history.
+
+        Parameters:
+            df
+                Whatever get_portfolio_value_history_dataframe() outputs, pass it into here.
+                If df is None, then we automatically call get_portfolio_value_history_dataframe().
+            benchmark_symbols
+                An iterable of stock symbols to be used as benchmarks.
+            update_store
+                Whether or not to pull market data from the internet.
+
+        Returns:
+            A new dataframe that includes benchmarks.
+            TODO: Document what the new dataframe looks like.
+        """
+        if df is None:
+            df = self.get_portfolio_value_history_dataframe(update_store=update_store)
+        assert isinstance(df, pd.DataFrame)
+        benchmark_symbols = list(benchmark_symbols)
+        assert len(benchmark_symbols) == len(set(benchmark_symbols))
+
+        market_data_source = MarketDataAggregator()
+        market_data_df = market_data_source.stock_timeseries_daily(benchmark_symbols, update_store=update_store)
+        drs_df = market_data_source.stock_timeseries_daily__to_dividend_reinvested_scaled(market_data_df)
+        assert drs_df.index.is_monotonic
+        drs_df.fillna(method="bfill", inplace=True)
+
+        # TODO: How to deal with forex movements?
+
+        for symbol in benchmark_symbols:
+            benchmark_currency = drs_df[symbol]["unit"]
+            benchmark_unit_price = drs_df[symbol]["drscaled_adjusted_close"]
+
+            # pp_changes basically describes how much we bought in our actual portfolio each
+            # day, not accounting for fees.
+            pp_changes = df["purchase_price_before_fees"] - df["purchase_price_before_fees"].shift(1, fill_value=Fraction(0))
+
+            joined_sers = {
+                    "benchmark_currency": benchmark_currency,
+                    "benchmark_unit_price": benchmark_unit_price,
+                    "purchase_price_changes": pp_changes,
+                    "actual_portfolio_market_value": df["market_value"],
+                }
+            joined_df = pd.concat(joined_sers, axis="columns").dropna(how="any")
+
+            # When base_changes is positive, we buy the equivalent in benchmark units.
+            # When base_changes is negative, we sell a proportional amount of benchmark units, and record profit/loss.
+
+            units_to_buy = joined_df["purchase_price_changes"] / joined_df["benchmark_unit_price"]
+            proportion_to_sell = (
+                    (-joined_df["purchase_price_changes"])
+                    / df["purchase_price_before_fees"].shift(1, fill_value=np.nan)
+                )
+
+            units_bought_ser = pd.Series(index=joined_df.index, dtype="object")
+            units_bought_ser = units_bought_ser.mask(joined_df["purchase_price_changes"] > 0, units_to_buy)
+            units_bought_ser.fillna(value=Fraction(0), inplace=True)
+            joined_df.insert(len(joined_df.columns), "benchmark_units_bought", units_bought_ser)
+
+            proportion_sold_ser = pd.Series(index=joined_df.index, dtype="object")
+            proportion_sold_ser = proportion_sold_ser.mask(joined_df["purchase_price_changes"] < 0, proportion_to_sell)
+            proportion_sold_ser.fillna(value=Fraction(0), inplace=True)
+            joined_df.insert(len(joined_df.columns), "benchmark_proportion_sold", proportion_sold_ser)
+
+            # currency = TODO
+            units_owned = []
+            realized_gain = []
+            benchmark_purchase_price_before_fees = []
+            units_owned_curr = Fraction(0)
+            realized_gain_curr = Fraction(0)
+            benchmark_purchase_price_before_fees_curr = Fraction(0)
+
+            for (date, row) in joined_df.iterrows():
+                if row["benchmark_units_bought"] > 0:
+                    assert row["benchmark_proportion_sold"] == 0 # They are mutually exclusive conditions
+                    units_owned_curr += row["benchmark_units_bought"]
+                    benchmark_purchase_price_before_fees_curr += row["benchmark_units_bought"] * row["benchmark_unit_price"]
+                elif row["benchmark_proportion_sold"] > 0:
+                    units_sold = units_owned_curr * row["benchmark_proportion_sold"]
+                    sold_base_price_before_fees = benchmark_purchase_price_before_fees_curr * row["benchmark_proportion_sold"]
+                    gross_proceeds = units_sold * row["benchmark_unit_price"]
+
+                    units_owned_curr -= units_sold
+                    realized_gain_curr += gross_proceeds - sold_base_price_before_fees
+                    benchmark_purchase_price_before_fees_curr -= sold_base_price_before_fees
+                units_owned.append(units_owned_curr)
+                realized_gain.append(realized_gain_curr)
+                benchmark_purchase_price_before_fees.append(benchmark_purchase_price_before_fees_curr)
+
+            units_owned = pd.Series(data=units_owned, index=joined_df.index)
+            realized_gain = pd.Series(data=realized_gain, index=joined_df.index)
+            benchmark_purchase_price_before_fees = pd.Series(data=benchmark_purchase_price_before_fees, index=joined_df.index)
+
+            benchmark_market_value = units_owned * joined_df["benchmark_unit_price"]
+            benchmark_net_profit = (
+                        benchmark_market_value
+                        - benchmark_purchase_price_before_fees
+                        + realized_gain
+                        - df["all_fees"]
+                    )
+
+            #df.insert(len(df.columns), "benchmark_" + symbol + "_purchased_before_fees", benchmark_purchase_price_before_fees)
+
+            net_profit_colname = "benchmark_net_profit_" + symbol
+            df.insert(len(df.columns), net_profit_colname, benchmark_net_profit)
+            df.loc[:,net_profit_colname].fillna(method="ffill", inplace=True)
+
+        dump_df_to_csv_debugging_file(df, self._debugging_path, "portfolio_value_history_dataframe_with_benchmarks.csv")
+        return df #(df, drs_df)
 
     ######################################################################################
     ######################################################################################
@@ -220,7 +360,6 @@ class PortfolioTracker:
                         "disposed_during_this_trade": global_avgs_diff.disposed,
                         "acquired_during_this_trade": global_avgs_diff.acquired,
                     },
-
 
                     # None of this is needed yet.
                     ## Data from this field is derived from all the other fields, and is provided for convenience.

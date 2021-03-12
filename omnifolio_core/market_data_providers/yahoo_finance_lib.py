@@ -32,7 +32,10 @@ import yfinance
 
 from ..market_data_provider import MarketDataProvider
 
-from ..utils import str_is_nonempty_and_compact
+from ..utils import (
+        str_is_nonempty_and_compact,
+        dump_df_to_csv_debugging_file, # Convenient to use occasionally when debugging
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -165,6 +168,14 @@ class YahooFinanceLib(MarketDataProvider):
                 }
             int_cols_to_retype = list(k for (k, v) in new_column_types.items() if (v is _NUMPY_INT))
             new_df[int_cols_to_retype] = new_df[int_cols_to_retype].round(decimals=0)
+            # We forward-fill, in case dividends and splits happen during non-trading days
+            new_df.loc[:,"open"].fillna(method="ffill", inplace=True)
+            new_df.loc[:,"high"].fillna(method="ffill", inplace=True)
+            new_df.loc[:,"low"].fillna(method="ffill", inplace=True)
+            new_df.loc[:,"close"].fillna(method="ffill", inplace=True)
+            new_df.loc[:,"adjusted_close"].fillna(method="ffill", inplace=True)
+            new_df.loc[:,"volume"].fillna(method="ffill", inplace=True)
+            # And now, we change columns
             new_df = new_df.astype(new_column_types)
 
             # Add some new columns

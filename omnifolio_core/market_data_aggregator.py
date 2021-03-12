@@ -115,7 +115,7 @@ class MarketDataAggregator:
             ret[symbol] = df
         return ret
 
-    def stock_timeseries_daily__to_adjclose_summary(self, dfs):
+    def stock_timeseries_daily__to_adjclose_summary(self, dfs, split_adjusted=False):
         """
         Summarizes important closing values from the data in dfs.
 
@@ -155,6 +155,42 @@ class MarketDataAggregator:
 
         df = pd.concat(new_cols, axis="columns")
         dump_df_to_csv_debugging_file(df, self._debugging_path, "stock_timeseries_daily__to_adjclose_summary_dataframe.csv")
+
+        if split_adjusted:
+            for symbol in dfs.keys():
+                cum_split = df.loc[:, (symbol, "split")].cumprod()
+                latest_cum_split = cum_split.dropna(axis="index", how="all")[-1]
+                multiply_by = cum_split / latest_cum_split
+                for c in ["adjusted_close", "exdividend"]:
+                    df.loc[:, (symbol, c)] = df.loc[:, (symbol, c)] * multiply_by
+            dump_df_to_csv_debugging_file(df, self._debugging_path, "stock_timeseries_daily__to_adjclose_summary_dataframe_splitadjusted.csv")
+        return df
+
+    def stock_timeseries_daily__to_dividend_reinvested_scaled(self, dfs):
+        """
+        Calculates stock prices scaled by dividend-reinvestment.
+
+        ---
+
+        Takes in whatever stock_timeseries_daily() returns.
+
+        Returns a dataframe.
+        TODO: Document the dataframe's format?
+        """
+        symbols = set(dfs.keys())
+        df = self.stock_timeseries_daily__to_adjclose_summary(dfs, split_adjusted=True)
+        df.fillna(method="ffill", inplace=True)
+
+        new_sers = {}
+        for symbol in symbols:
+            dividend_ratio = (df[symbol]["exdividend"] / df[symbol]["adjusted_close"]) + 1
+            scaling_coef = dividend_ratio.cumprod()
+            scaled_adjusted_close = df[symbol]["adjusted_close"] * scaling_coef
+
+            df.loc[:,(symbol, "adjusted_close")] = scaled_adjusted_close
+            df.drop([(symbol, "exdividend"), (symbol, "split")], axis="columns", inplace=True)
+
+        df.rename(columns={"adjusted_close": "drscaled_adjusted_close"}, level=1, inplace=True)
         return df
 
     @staticmethod
