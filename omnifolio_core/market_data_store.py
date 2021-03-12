@@ -229,6 +229,85 @@ class MarketDataStore:
         return
 
     @staticmethod
+    def _update_price_data(conn, *, symbol, date, df_row):
+        assert isinstance(symbol, str)
+        assert isinstance(date, datetime.date)
+        assert isinstance(df_row, pd.Series)
+
+        assert isinstance(df_row["data_source"], str)
+        assert isinstance(df_row["data_trust_value"].item(), int)
+        assert isinstance(df_row["data_collection_time"].to_pydatetime(), datetime.datetime)
+
+        assert isinstance(df_row["unit"], str)
+
+        assert isinstance(df_row["open"].item(), int)
+        assert isinstance(df_row["high"].item(), int)
+        assert isinstance(df_row["low"].item(), int)
+        assert isinstance(df_row["close"].item(), int)
+        assert isinstance(df_row["adjusted_close"].item(), int)
+        assert isinstance(df_row["price_denominator"].item(), int)
+
+        assert isinstance(df_row["volume"].item(), int)
+
+        assert isinstance(df_row["exdividend"].item(), int)
+        assert isinstance(df_row["dividend_denominator"].item(), int)
+
+        assert isinstance(df_row["split"].item(), float)
+
+        query = """
+                UPDATE stock_timeseries_daily SET
+                    data_trust_value         = ?,
+                    data_collection_time_utc = ?,
+
+                    unit = ?,
+
+                    open              = ?,
+                    high              = ?,
+                    low               = ?,
+                    close             = ?,
+                    adjusted_close    = ?,
+                    price_denominator = ?,
+
+                    volume = ?,
+
+                    dividend_numerator   = ?,
+                    dividend_denominator = ?,
+
+                    split = ?
+                WHERE
+                    symbol = ?
+                    AND date = ?
+                    AND data_source = ?
+                ;
+            """
+        params = (
+                df_row["data_trust_value"].item(),
+                df_row["data_collection_time"].to_pydatetime(),
+
+                df_row["unit"],
+
+                df_row["open"].item(),
+                df_row["high"].item(),
+                df_row["low"].item(),
+                df_row["close"].item(),
+                df_row["adjusted_close"].item(),
+                df_row["price_denominator"].item(),
+
+                df_row["volume"].item(),
+
+                df_row["exdividend"].item(),
+                df_row["dividend_denominator"].item(),
+
+                df_row["split"].item(),
+
+                symbol,
+                date,
+                df_row["data_source"],
+            )
+        conn.execute(query, params)
+        return
+
+    @staticmethod
     def _get_price_data(conn, *, symbols_list):
         # TODO: Make this pull only one row for every date. For now, it just pulls everything.
         markers = ",".join(["?"] * len(symbols_list))
@@ -361,13 +440,34 @@ class MarketDataStore:
             assert all(isinstance(x, datetime.date) for x in stored_dates)
             assert all(isinstance(x, datetime.date) for x in pulled_dates)
 
+            # First, we update the three latest entries.
+            # This is because data sources often report the price of a day before the day is
+            # actually complete. Additionally, I added an allowance of additional days that
+            # can be updated, to give a small chance to fix erroneous data.
+            # (Technically, I should allow the entire pulled data to update the stored data,
+            # but I generally want to make data immutable once it's entered into my system,
+            # to prevent bugs from wiping valuable data.)
+            if len(stored_dates) > 0:
+                dates_to_update = set(sorted(stored_dates)[-3:])
+                provided_dates_in_pulled_data = pulled_dates & dates_to_update
+                for date in provided_dates_in_pulled_data:
+                    row = df.loc[np.datetime64(date)]
+
+                    self._update_price_data(
+                            conn,
+                            symbol=symbol,
+                            date=date,
+                            df_row=row,
+                        )
+
+            # Now, we add missing data.
+
             dates_missing_in_store = pulled_dates - stored_dates
             for date in dates_missing_in_store:
                 row = df.loc[np.datetime64(date)]
 
                 self._add_price_data(
                         conn,
-
                         symbol=symbol,
                         date=date,
                         df_row=row,
