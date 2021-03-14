@@ -38,34 +38,155 @@ class PortfolioTracker:
 
     _PORTFOLIO_HISTORY_DEBUGGING__FILEPATH = "portfolio_history.json"
 
-    def __init__(self, config=get_config()):
+    def __init__(self, benchmark_symbols, config=get_config(), *, update_store):
+        assert isinstance(update_store, bool)
+
         self._user_data_path = config["user_data_path"]
 
         # TODO: Set the directory name somewhere else.
         self._debugging_path = os.path.join(config["generated_data_path"], "debugging")
+
+        trade_history_iterable = get_trades(self._user_data_path)
+        portfolio_history_iterable = self._generate_portfolio_history(
+                trade_history_iterable,
+            )
+        holdings_summary_dfs = self._generate_holdings_summary_dataframes(
+                portfolio_history_iterable,
+            )
+        (summary_df, symbols) = self._make_holdings_summary_dataframe(
+                holdings_summary_dfs,
+                debugging_path=self._debugging_path,
+            )
+        portfolio_value_history_df = self._make_portfolio_value_history_dataframe(
+                summary_df,
+                symbols,
+                update_store=update_store,
+                debugging_path=self._debugging_path,
+            )
+        self._portfolio_stats_history = self._add_benchmarks_to_value_history_dataframe(
+                portfolio_value_history_df,
+                benchmark_symbols,
+                update_store=update_store,
+                debugging_path=self._debugging_path,
+            )
+        self._portfolio_stats_history.dropna(how="all", inplace=True)
         return
 
-    def get_trades(self):
-        """
-        Convenient pass-through to the standalone function which doesn't require the caller
-        to pass in any filepaths.
-        """
-        return get_trades(self._user_data_path)
+    def get_portfolio_stats_history(self):
+        return deepcopy(self._portfolio_stats_history)
 
-    def get_full_portfolio_history(self, full_trade_history=None):
+    ##############################################
+    # Portfolio history data processing pipeline #
+    ##############################################
+
+    @staticmethod
+    def _generate_portfolio_history(trade_history_iterable, **kwargs):
         """
-        Calculates an exact and detailed portfolio history.
+        [Generator function.]
 
-        If called with full_trade_history == None, then this method will first get trades data
-        from the .get_trades() method before processing it into a dataframe.
+        (TODO: properly document what this function is supposed to be.)
 
-        TODO: Consider implementing some kind of lazy data structure.
+        Starts with an initial portfolio state (initial_portfolio_state), and generates evolutions
+        of this state for every entry in the trade history (trade_history_iterable).
         """
-        history = [x for x in self.generate_portfolio_history(full_trade_history)]
-        self._dump_portfolio_history_debugging_file(history)
-        return history
 
-    def get_holdings_summary_dataframe(self, full_trade_history=None):
+        holdings_acc_avgs = deepcopy(kwargs.get("holdings_account_averages", PortfolioHoldingsAvgCost(lambda x : x.account)))
+        assert isinstance(holdings_acc_avgs, PortfolioHoldingsAvgCost)
+
+        holdings_global_avgs = deepcopy(kwargs.get("holdings_global_averages", PortfolioHoldingsAvgCost(lambda x : "")))
+        assert isinstance(holdings_global_avgs, PortfolioHoldingsAvgCost)
+
+        for individual_trade in trade_history_iterable:
+            assert isinstance(individual_trade, TradeInfo)
+
+            trade_detail = deepcopy(individual_trade)
+            acc_avgs_diff = holdings_acc_avgs.trade(trade_detail)
+            global_avgs_diff = holdings_global_avgs.trade(trade_detail)
+
+            entry = {
+                    # Data from these fields are not cumulative.
+                    # Thus, the caller must save this data themselves.
+                    "trade_detail": trade_detail,
+
+                    "account_averages": {
+                        "holdings": deepcopy(holdings_acc_avgs),
+                        "disposed_during_this_trade": acc_avgs_diff.disposed,
+                        "acquired_during_this_trade": acc_avgs_diff.acquired,
+                    },
+                    "global_averages": {
+                        "holdings": deepcopy(holdings_global_avgs),
+                        "disposed_during_this_trade": global_avgs_diff.disposed,
+                        "acquired_during_this_trade": global_avgs_diff.acquired,
+                    },
+
+                    # None of this is needed yet.
+                    ## Data from this field is derived from all the other fields, and is provided for convenience.
+                    ## Ignoring it will not cause information loss.
+                    #"stats": {
+                    #    "portfolio_state": "NOT_IMPLEMENTED",
+                    #    "portfolio_lifetime": "NOT_IMPLEMENTED",
+                    #    "trade": "NOT_IMPLEMENTED",
+                    #},
+                }
+            yield entry
+        return
+
+    @staticmethod
+    def _generate_holdings_summary_dataframes(portfolio_history_iterable):
+        data = {}
+
+        new_cumulative_entry = lambda : {
+                "total_realized_capital_gain_before_fees": None,
+                "total_fees_paid": None,
+            }
+        cumulative = {} # {ric_symbol: {}}
+
+        for curr_state in portfolio_history_iterable:
+            date = curr_state["trade_detail"].trade_date
+            assert isinstance(date, datetime.date)
+
+            ric_symbol = curr_state["trade_detail"].ric_symbol
+            assert isinstance(ric_symbol, str)
+
+            fees = curr_state["trade_detail"].total_fees
+            assert isinstance(fees, Currency)
+
+            all_value_gain = []
+            for disposal in curr_state["global_averages"]["disposed_during_this_trade"]["stocks"]:
+                if ric_symbol != disposal["ric_symbol"]:
+                    raise ValueError("At this point in development, it is not expected to dispose multiple symbols in one trade.")
+                value_gain = (disposal["disposal_unit_price"] - disposal["acquisition_unit_price"]) * disposal["unit_quantity"]
+                assert isinstance(value_gain, Currency)
+                all_value_gain.append(value_gain)
+
+            if len(all_value_gain) > 1:
+                raise ValueError("At this point in development, it is not expected to see multiple disposal entries in one.")
+            elif len(all_value_gain) == 1:
+                all_value_gain = all_value_gain[0]
+            else:
+                assert len(all_value_gain) == 0
+                all_value_gain = Currency(curr_state["trade_detail"].unit_price.symbol, 0)
+
+            if ric_symbol in cumulative:
+                cumulative[ric_symbol]["total_realized_capital_gain_before_fees"] += all_value_gain
+                cumulative[ric_symbol]["total_fees_paid"] += fees
+            else:
+                cumulative[ric_symbol] = {
+                        "total_realized_capital_gain_before_fees": all_value_gain,
+                        "total_fees_paid": fees,
+                    }
+
+            d = {
+                    "comment": curr_state["trade_detail"].comment,
+                    "stocks": curr_state["global_averages"]["holdings"].get_holdings()["stocks"][""],
+                    "cumulative": deepcopy(cumulative),
+                }
+            data[date] = d
+
+        return data
+
+    @staticmethod
+    def _make_holdings_summary_dataframe(holdings_summary_dfs, *, debugging_path):
         """
         Returns a summary of holdings, using the global average cost method.
 
@@ -73,7 +194,7 @@ class PortfolioTracker:
             [0] is the dataframe, and
             [1] is the complete set of symbols.
         """
-        raw = self._generate_data_for_summary_dataframe(full_trade_history)
+        assert isinstance(holdings_summary_dfs, dict)
         index = []
         data = []
         symbols = set()
@@ -81,7 +202,7 @@ class PortfolioTracker:
         # Purely for debugging
         debugging_cum_symbols = set()
 
-        for (k, v) in raw.items():
+        for (k, v) in holdings_summary_dfs.items():
             d = {("comment", "", ""): v["comment"]}
             for (symbol, holding_data) in v["stocks"].items():
                 if len(holding_data) > 0:
@@ -116,14 +237,17 @@ class PortfolioTracker:
             fill("cumulative", "total_realized_capital_gain_before_fees", Currency("USD", 0))
             fill("cumulative", "total_fees_paid", Currency("USD", 0))
 
-        dump_df_to_csv_debugging_file(df, self._debugging_path, "holdings_summary_dataframe.csv")
+        dump_df_to_csv_debugging_file(df, debugging_path, "holdings_summary_dataframe.csv")
         return (df, symbols)
 
-    def get_portfolio_value_history_dataframe(self, full_trade_history=None, update_store=True):
+    @staticmethod
+    def _make_portfolio_value_history_dataframe(summary_df, symbols, *, update_store, debugging_path):
+        assert isinstance(summary_df, pd.DataFrame)
+        assert isinstance(symbols, set)
+
+        # TODO: Derive symbols from summary df.
 
         # TODO: This code is currently unable to handle splits/consolidations. Fix this!
-
-        (summary_df, symbols) = self.get_holdings_summary_dataframe(full_trade_history=full_trade_history)
 
         market_data_source = MarketDataAggregator()
         market_data_df = market_data_source.stock_timeseries_daily(list(symbols), update_store=update_store)
@@ -141,7 +265,7 @@ class PortfolioTracker:
             fill("exdividend", Fraction(0))
             fill("split", Fraction(1))
 
-        dump_df_to_csv_debugging_file(df, self._debugging_path, "portfolio_value_history_dataframe_intermediate.csv")
+        dump_df_to_csv_debugging_file(df, debugging_path, "portfolio_value_history_dataframe_intermediate.csv")
 
         def sum_currency_col(i0, i2):
             sers = []
@@ -197,10 +321,11 @@ class PortfolioTracker:
             }
         new_df = pd.concat(all_sers, axis="columns").dropna(how="any")
 
-        dump_df_to_csv_debugging_file(new_df, self._debugging_path, "portfolio_value_history_dataframe.csv")
+        dump_df_to_csv_debugging_file(new_df, debugging_path, "portfolio_value_history_dataframe.csv")
         return new_df
 
-    def add_benchmarks_to_value_history_dataframe(self, df, benchmark_symbols, update_store=True):
+    @staticmethod
+    def _add_benchmarks_to_value_history_dataframe(df, benchmark_symbols, *, update_store, debugging_path):
         """
         Adds benchmarks to a portfolio value history dataframe.
 
@@ -211,19 +336,17 @@ class PortfolioTracker:
 
         Parameters:
             df
-                Whatever get_portfolio_value_history_dataframe() outputs, pass it into here.
-                If df is None, then we automatically call get_portfolio_value_history_dataframe().
+                Whatever _make_portfolio_value_history_dataframe() outputs, pass it into here.
             benchmark_symbols
                 An iterable of stock symbols to be used as benchmarks.
             update_store
                 Whether or not to pull market data from the internet.
-
+            debugging_path
+                Path for debugging output files.
         Returns:
             A new dataframe that includes benchmarks.
             TODO: Document what the new dataframe looks like.
         """
-        if df is None:
-            df = self.get_portfolio_value_history_dataframe(update_store=update_store)
         assert isinstance(df, pd.DataFrame)
         benchmark_symbols = list(benchmark_symbols)
         assert len(benchmark_symbols) == len(set(benchmark_symbols))
@@ -314,120 +437,8 @@ class PortfolioTracker:
             df.insert(len(df.columns), net_profit_colname, benchmark_net_profit)
             df.loc[:,net_profit_colname].fillna(method="ffill", inplace=True)
 
-        dump_df_to_csv_debugging_file(df, self._debugging_path, "portfolio_value_history_dataframe_with_benchmarks.csv")
+        dump_df_to_csv_debugging_file(df, debugging_path, "portfolio_value_history_dataframe_with_benchmarks.csv")
         return df #(df, drs_df)
-
-    ######################################################################################
-    ######################################################################################
-
-    def generate_portfolio_history(self, trade_history_iterable, **kwargs):
-        """
-        [Generator function.]
-
-        (TODO: properly document what this function is supposed to be.)
-
-        Starts with an initial portfolio state (initial_portfolio_state), and generates evolutions
-        of this state for every entry in the trade history (trade_history_iterable).
-        """
-        if trade_history_iterable is None:
-            trade_history_iterable = self.get_trades()
-
-        holdings_acc_avgs = deepcopy(kwargs.get("holdings_account_averages", PortfolioHoldingsAvgCost(lambda x : x.account)))
-        assert isinstance(holdings_acc_avgs, PortfolioHoldingsAvgCost)
-
-        holdings_global_avgs = deepcopy(kwargs.get("holdings_global_averages", PortfolioHoldingsAvgCost(lambda x : "")))
-        assert isinstance(holdings_global_avgs, PortfolioHoldingsAvgCost)
-
-        for individual_trade in trade_history_iterable:
-            assert isinstance(individual_trade, TradeInfo)
-
-            trade_detail = deepcopy(individual_trade)
-            acc_avgs_diff = holdings_acc_avgs.trade(trade_detail)
-            global_avgs_diff = holdings_global_avgs.trade(trade_detail)
-
-            entry = {
-                    # Data from these fields are not cumulative.
-                    # Thus, the caller must save this data themselves.
-                    "trade_detail": trade_detail,
-
-                    "account_averages": {
-                        "holdings": deepcopy(holdings_acc_avgs),
-                        "disposed_during_this_trade": acc_avgs_diff.disposed,
-                        "acquired_during_this_trade": acc_avgs_diff.acquired,
-                    },
-                    "global_averages": {
-                        "holdings": deepcopy(holdings_global_avgs),
-                        "disposed_during_this_trade": global_avgs_diff.disposed,
-                        "acquired_during_this_trade": global_avgs_diff.acquired,
-                    },
-
-                    # None of this is needed yet.
-                    ## Data from this field is derived from all the other fields, and is provided for convenience.
-                    ## Ignoring it will not cause information loss.
-                    #"stats": {
-                    #    "portfolio_state": "NOT_IMPLEMENTED",
-                    #    "portfolio_lifetime": "NOT_IMPLEMENTED",
-                    #    "trade": "NOT_IMPLEMENTED",
-                    #},
-                }
-            yield entry
-        return
-
-    ######################################################################################
-    ######################################################################################
-
-    def _generate_data_for_summary_dataframe(self, full_trade_history):
-        data = {}
-
-        new_cumulative_entry = lambda : {
-                "total_realized_capital_gain_before_fees": None,
-                "total_fees_paid": None,
-            }
-        cumulative = {} # {ric_symbol: {}}
-
-        for curr_state in self.generate_portfolio_history(full_trade_history):
-            date = curr_state["trade_detail"].trade_date
-            assert isinstance(date, datetime.date)
-
-            ric_symbol = curr_state["trade_detail"].ric_symbol
-            assert isinstance(ric_symbol, str)
-
-            fees = curr_state["trade_detail"].total_fees
-            assert isinstance(fees, Currency)
-
-            all_value_gain = []
-            for disposal in curr_state["global_averages"]["disposed_during_this_trade"]["stocks"]:
-                if ric_symbol != disposal["ric_symbol"]:
-                    raise ValueError("At this point in development, it is not expected to dispose multiple symbols in one trade.")
-                value_gain = (disposal["disposal_unit_price"] - disposal["acquisition_unit_price"]) * disposal["unit_quantity"]
-                assert isinstance(value_gain, Currency)
-                all_value_gain.append(value_gain)
-
-            if len(all_value_gain) > 1:
-                raise ValueError("At this point in development, it is not expected to see multiple disposal entries in one.")
-            elif len(all_value_gain) == 1:
-                all_value_gain = all_value_gain[0]
-            else:
-                assert len(all_value_gain) == 0
-                all_value_gain = Currency(curr_state["trade_detail"].unit_price.symbol, 0)
-
-            if ric_symbol in cumulative:
-                cumulative[ric_symbol]["total_realized_capital_gain_before_fees"] += all_value_gain
-                cumulative[ric_symbol]["total_fees_paid"] += fees
-            else:
-                cumulative[ric_symbol] = {
-                        "total_realized_capital_gain_before_fees": all_value_gain,
-                        "total_fees_paid": fees,
-                    }
-
-            d = {
-                    "comment": curr_state["trade_detail"].comment,
-                    "stocks": curr_state["global_averages"]["holdings"].get_holdings()["stocks"][""],
-                    "cumulative": deepcopy(cumulative),
-                }
-            data[date] = d
-
-        return data
 
     def _dump_portfolio_history_debugging_file(self, obj):
         filepath = os.path.join(
