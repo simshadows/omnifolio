@@ -168,18 +168,20 @@ class YahooFinanceLib(MarketDataProvider):
                 }
             int_cols_to_retype = list(k for (k, v) in new_column_types.items() if (v is _NUMPY_INT))
             new_df[int_cols_to_retype] = new_df[int_cols_to_retype].round(decimals=0)
+
             # We forward-fill, in case dividends and splits happen during non-trading days
-            new_df.loc[:,"open"].fillna(method="ffill", inplace=True)
-            new_df.loc[:,"high"].fillna(method="ffill", inplace=True)
-            new_df.loc[:,"low"].fillna(method="ffill", inplace=True)
-            new_df.loc[:,"close"].fillna(method="ffill", inplace=True)
             new_df.loc[:,"adjusted_close"].fillna(method="ffill", inplace=True)
             new_df.loc[:,"volume"].fillna(method="ffill", inplace=True)
+            # These columns just get the previous adjusted_close values.
+            new_df.loc[:,"open"].fillna(value=new_df["adjusted_close"], inplace=True)
+            new_df.loc[:,"high"].fillna(value=new_df["adjusted_close"], inplace=True)
+            new_df.loc[:,"low"].fillna(value=new_df["adjusted_close"], inplace=True)
+            new_df.loc[:,"close"].fillna(value=new_df["adjusted_close"], inplace=True)
+
             # And now, we change columns
             new_df = new_df.astype(new_column_types)
 
             # Add some new columns
-
             new_df.insert(0, "dividend_denominator", _NUMPY_INT(self._DIVIDEND_DENOMINATOR))
             new_df.insert(0, "price_denominator", _NUMPY_INT(self._PRICE_DENOMINATOR))
             new_df.insert(0, "unit", currencies[symbol])
