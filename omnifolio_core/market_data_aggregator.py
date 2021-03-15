@@ -48,41 +48,57 @@ class MarketDataAggregator:
 
     ######################################################################################
 
-    def stock_timeseries_daily(self, symbols_list, update_store=True):
+    def stock_timeseries_daily__update_store(self, symbols):
+        """
+        Updates (usually by downloading data off the internet) all relevant data for stock_timeseries_daily(),
+        specifically only updating the symbols listed.
+
+        Parameters:
+            symbols:
+                A collection of strings, with each string representing a stock or ETF.
+                Collection must contain at least one item.
+        Returns:
+            None
+        """
+        assert all(isinstance(x, str) for x in symbols)
+
+        provider = self._providers[0] # TODO: Use multiple providers later?
+
+        data = provider.stock_timeseries_daily(list(symbols)) # TODO: Remove specific type restriction of symbols?
+
+        assert set(data.keys()) == set(symbols)
+        
+        store = MarketDataStore(self._config)
+        for symbol in symbols:
+            store.update_stock_timeseries_daily(symbol, provider.get_provider_name(), data[symbol])
+        return
+
+    def stock_timeseries_daily(self, symbols, update_store=True):
         """
         Get full daily history of a list of stocks and/or ETFs.
 
         Parameters:
-
-            symbols_list:
-                A list of strings, with each string representing a stock or ETF.
-                Must have at least one item in the list.
-
+            symbols:
+                A collection of strings, with each string representing a stock or ETF.
+                Collection must contain at least one item.
+            update_store:
+                Automatically calls stock_timeseries_daily__update_store() before compiling
+                the data.
         Returns:
-
             (TODO: Document this later.)
         """
         assert isinstance(update_store, bool)
-
-        store = MarketDataStore(self._config)
-        provider = self._providers[0] # TODO: Use multiple providers later?
-
         if update_store:
-            from_provider = provider.stock_timeseries_daily(symbols_list)
+            self.stock_timeseries_daily__update_store(symbols)
 
-            assert set(from_provider.keys()) == set(symbols_list)
-            
-            for symbol in symbols_list:
-                store.update_stock_timeseries_daily(symbol, provider.get_provider_name(), from_provider[symbol])
+        data = MarketDataStore(self._config).get_stock_timeseries_daily(symbols)
 
-        from_store = store.get_stock_timeseries_daily(symbols_list)
-
-        if (set(from_store.keys()) != set(symbols_list)):
+        if (set(data.keys()) != set(symbols)):
             raise RuntimeError
-        if any(len(v) == 0 for (k, v) in from_store.items()):
+        if any(len(v) == 0 for (k, v) in data.items()):
             raise MissingData("Cannot find data for one or more symbols.")
 
-        return from_store
+        return data
 
     ######################################################################################
 

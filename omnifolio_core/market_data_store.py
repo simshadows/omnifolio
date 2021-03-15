@@ -308,9 +308,12 @@ class MarketDataStore:
         return
 
     @staticmethod
-    def _get_price_data(conn, *, symbols_list):
+    def _get_price_data(conn, *, symbols):
+        assert all(isinstance(x, str) for x in symbols)
+
         # TODO: Make this pull only one row for every date. For now, it just pulls everything.
-        markers = ",".join(["?"] * len(symbols_list))
+
+        markers = ",".join(["?"] * len(symbols))
         query = f"""
                 SELECT
                     symbol,
@@ -341,15 +344,17 @@ class MarketDataStore:
                     symbol IN ({markers})
                 ;
             """
-        cursor = conn.execute(query, symbols_list)
+        cursor = conn.execute(query, symbols)
         ret = [x for x in cursor]
         return ret
 
     ######################################################################################
 
-    def get_stock_timeseries_daily(self, symbols_list):
+    def get_stock_timeseries_daily(self, symbols):
+        assert all(isinstance(x, str) for x in symbols)
+
         with self._get_db_connection() as conn:
-            data = self._get_price_data(conn, symbols_list=symbols_list)
+            data = self._get_price_data(conn, symbols=symbols)
 
             column_names = [
                     "symbol",
@@ -403,7 +408,7 @@ class MarketDataStore:
 
             dfs = {}
 
-            for symbol in symbols_list:
+            for symbol in symbols:
                 new_df = df.loc[df["symbol"] == symbol].drop(labels=["symbol"], axis="columns")
                 new_df = new_df.set_index(keys=["date"], verify_integrity=True)
                 if not new_df.index.is_monotonic:

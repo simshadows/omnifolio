@@ -34,9 +34,9 @@ from .utils import (
 
 logger = logging.getLogger(__name__)
 
-class PortfolioTracker:
+_PORTFOLIO_HISTORY_DEBUGGING__FILEPATH = "portfolio_history.json"
 
-    _PORTFOLIO_HISTORY_DEBUGGING__FILEPATH = "portfolio_history.json"
+class PortfolioTracker:
 
     def __init__(self, benchmark_symbols, config=get_config(), *, update_store):
         assert isinstance(update_store, bool)
@@ -47,26 +47,35 @@ class PortfolioTracker:
         self._debugging_path = os.path.join(config["generated_data_path"], "debugging")
 
         trade_history_iterable = get_trades(self._user_data_path)
-        portfolio_history_iterable = self._generate_portfolio_history(
+
+        portfolio_history = list(self._generate_portfolio_history(
                 trade_history_iterable,
-            )
+            ))
+        self._dump_portfolio_history_debugging_file(portfolio_history, debugging_path=self._debugging_path)
+
         holdings_summary_dfs = self._generate_holdings_summary_dataframes(
-                portfolio_history_iterable,
+                portfolio_history,
             )
-        (summary_df, symbols) = self._make_holdings_summary_dataframe(
+
+        summary_df = self._make_holdings_summary_dataframe(
                 holdings_summary_dfs,
                 debugging_path=self._debugging_path,
             )
+
+        if update_store:
+            summary_df_symbols = set(summary_df.columns.levels[1])
+            all_symbols = summary_df_symbols | set(benchmark_symbols)
+            assert all(isinstance(x, str) for x in all_symbols)
+            MarketDataAggregator().stock_timeseries_daily__update_store(all_symbols)
+
         portfolio_value_history_df = self._make_portfolio_value_history_dataframe(
                 summary_df,
-                symbols,
-                update_store=update_store,
                 debugging_path=self._debugging_path,
             )
+
         self._portfolio_stats_history = self._add_benchmarks_to_value_history_dataframe(
                 portfolio_value_history_df,
                 benchmark_symbols,
-                update_store=update_store,
                 debugging_path=self._debugging_path,
             )
         self._portfolio_stats_history.dropna(how="all", inplace=True)
@@ -203,7 +212,7 @@ class PortfolioTracker:
         debugging_cum_symbols = set()
 
         for (k, v) in holdings_summary_dfs.items():
-            d = {("comment", "", ""): v["comment"]}
+            d = {}
             for (symbol, holding_data) in v["stocks"].items():
                 if len(holding_data) > 0:
                     symbols.add(symbol)
@@ -238,19 +247,18 @@ class PortfolioTracker:
             fill("cumulative", "total_fees_paid", Currency("USD", 0))
 
         dump_df_to_csv_debugging_file(df, debugging_path, "holdings_summary_dataframe.csv")
-        return (df, symbols)
+        return df
 
     @staticmethod
-    def _make_portfolio_value_history_dataframe(summary_df, symbols, *, update_store, debugging_path):
+    def _make_portfolio_value_history_dataframe(summary_df, *, debugging_path):
         assert isinstance(summary_df, pd.DataFrame)
-        assert isinstance(symbols, set)
-
-        # TODO: Derive symbols from summary df.
 
         # TODO: This code is currently unable to handle splits/consolidations. Fix this!
 
+        symbols = set(summary_df.columns.levels[1])
+
         market_data_source = MarketDataAggregator()
-        market_data_df = market_data_source.stock_timeseries_daily(list(symbols), update_store=update_store)
+        market_data_df = market_data_source.stock_timeseries_daily(list(symbols), update_store=False)
         market_data_df = market_data_source.stock_timeseries_daily__to_adjclose_summary(market_data_df)
         pandas_add_column_level_above(market_data_df, "prices", inplace=True)
         df = market_data_df.join(summary_df)
@@ -325,7 +333,7 @@ class PortfolioTracker:
         return new_df
 
     @staticmethod
-    def _add_benchmarks_to_value_history_dataframe(df, benchmark_symbols, *, update_store, debugging_path):
+    def _add_benchmarks_to_value_history_dataframe(df, benchmark_symbols, *, debugging_path):
         """
         Adds benchmarks to a portfolio value history dataframe.
 
@@ -339,8 +347,6 @@ class PortfolioTracker:
                 Whatever _make_portfolio_value_history_dataframe() outputs, pass it into here.
             benchmark_symbols
                 An iterable of stock symbols to be used as benchmarks.
-            update_store
-                Whether or not to pull market data from the internet.
             debugging_path
                 Path for debugging output files.
         Returns:
@@ -352,7 +358,7 @@ class PortfolioTracker:
         assert len(benchmark_symbols) == len(set(benchmark_symbols))
 
         market_data_source = MarketDataAggregator()
-        market_data_df = market_data_source.stock_timeseries_daily(benchmark_symbols, update_store=update_store)
+        market_data_df = market_data_source.stock_timeseries_daily(benchmark_symbols, update_store=False)
         drs_df = market_data_source.stock_timeseries_daily__to_dividend_reinvested_scaled(market_data_df)
         assert drs_df.index.is_monotonic
         drs_df.fillna(method="bfill", inplace=True)
@@ -440,29 +446,17 @@ class PortfolioTracker:
         dump_df_to_csv_debugging_file(df, debugging_path, "portfolio_value_history_dataframe_with_benchmarks.csv")
         return df #(df, drs_df)
 
-    def _dump_portfolio_history_debugging_file(self, obj):
+    @staticmethod
+    def _dump_portfolio_history_debugging_file(obj, *, debugging_path):
         filepath = os.path.join(
-                self._debugging_path,
-                self._PORTFOLIO_HISTORY_DEBUGGING__FILEPATH,
+                debugging_path,
+                _PORTFOLIO_HISTORY_DEBUGGING__FILEPATH,
             )
         logging.debug(f"Writing portfolio debugging history file to '{filepath}'.")
-        obj = [copy(x) for x in obj] # Copy only deep enough for our purposes
+        obj = [deepcopy(x) for x in obj]
         for entry in obj:
             entry["account_averages"]["holdings"] = entry["account_averages"]["holdings"].get_holdings()
             entry["global_averages"]["holdings"] = entry["global_averages"]["holdings"].get_holdings()
         fwrite_json(filepath, data=create_json_writable_debugging_structure(obj))
-        return
-
-    def _dump_df_to_csv_debugging_file(self, df, filename):
-        assert isinstance(df, pd.DataFrame)
-        assert isinstance(filename, str)
-
-        filepath = os.path.join(
-                self._debugging_path,
-                filename,
-            )
-        logging.debug(f"Writing to debugging file '{filepath}'.")
-        with open(filepath, "w") as f:
-            f.write(df.dropna(how="all").to_csv())
         return
 

@@ -29,7 +29,7 @@ _ENCODING = "utf-8"
 
 re_decimal = re.compile(r"^\d*[.,]?\d*$")
 
-def mkdir_recursive(relfilepath):
+def mkdir_recursive_for_filepath(relfilepath):
     absfilepath = os.path.join(_CWD, relfilepath)
     absdir = os.path.dirname(absfilepath)
     try:
@@ -40,7 +40,7 @@ def mkdir_recursive(relfilepath):
 
 # This overwrites whatever file is specified with the data.
 def fwrite_json(relfilepath, data=None):
-    mkdir_recursive(relfilepath)
+    mkdir_recursive_for_filepath(relfilepath)
     with open(relfilepath, encoding=_ENCODING, mode="w") as f:
         f.write(json.dumps(data, sort_keys=True, indent=4))
     return
@@ -175,6 +175,7 @@ def dump_df_to_csv_debugging_file(df, debugging_path, filename):
             filename,
         )
     logging.debug(f"Writing to debugging file '{filepath}'.")
+    mkdir_recursive_for_filepath(filepath)
     with open(filepath, "w") as f:
         f.write(df.dropna(how="all").to_csv())
     return
