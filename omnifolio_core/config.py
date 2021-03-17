@@ -23,6 +23,7 @@ _DEFAULT_CONFIG = {
     "rapidapi_api_key": "",
     "user_data_path": "./_user_data",
     "generated_data_path": "./_generated_data",
+    "preferred_currency": "USD",
 }
 
 _CONFIG_TYPES = {
@@ -31,6 +32,7 @@ _CONFIG_TYPES = {
     "rapidapi_api_key": str,
     "user_data_path": str,
     "generated_data_path": str,
+    "preferred_currency": str,
 }
 
 logger = logging.getLogger(__name__)
@@ -61,6 +63,11 @@ def get_config():
             logger.warning(f"Saving updated configuration file.")
             fwrite_json(_BACKUP_PATH, data=backup)
             fwrite_json(_CONFIG_PATH, data=data)
+
+        # We now write new config keys, derived from the existing ones.
+        data["debugging_path"] = os.path.join(data["generated_data_path"], "debugging")
+        # And we clean up existing ones
+        data["preferred_currency"] = data["preferred_currency"].strip()
 
         return data
     else:

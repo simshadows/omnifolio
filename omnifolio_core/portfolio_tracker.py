@@ -42,9 +42,8 @@ class PortfolioTracker:
         assert isinstance(update_store, bool)
 
         self._user_data_path = config["user_data_path"]
-
-        # TODO: Set the directory name somewhere else.
-        self._debugging_path = os.path.join(config["generated_data_path"], "debugging")
+        self._debugging_path = config["debugging_path"]
+        self._preferred_currency = config["preferred_currency"]
 
         trade_history_iterable = get_trades(self._user_data_path)
 

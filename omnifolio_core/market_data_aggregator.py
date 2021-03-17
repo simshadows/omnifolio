@@ -37,9 +37,7 @@ class MarketDataAggregator:
 
     def __init__(self, config=get_config()):
         self._config = config
-
-        # TODO: Set the directory name somewhere else.
-        self._debugging_path = os.path.join(config["generated_data_path"], "debugging")
+        self._debugging_path = config["debugging_path"]
 
         self._providers = [
                 YahooFinanceLib(),

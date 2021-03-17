@@ -445,7 +445,7 @@ class MarketDataStore:
             assert all(isinstance(x, datetime.date) for x in stored_dates)
             assert all(isinstance(x, datetime.date) for x in pulled_dates)
 
-            # First, we update the three latest entries.
+            # First, we update the five latest entries.
             # This is because data sources often report the price of a day before the day is
             # actually complete. Additionally, I added an allowance of additional days that
             # can be updated, to give a small chance to fix erroneous data.
@@ -453,7 +453,7 @@ class MarketDataStore:
             # but I generally want to make data immutable once it's entered into my system,
             # to prevent bugs from wiping valuable data.)
             if len(stored_dates) > 0:
-                dates_to_update = set(sorted(stored_dates)[-3:])
+                dates_to_update = set(sorted(stored_dates)[-5:])
                 provided_dates_in_pulled_data = pulled_dates & dates_to_update
                 for date in provided_dates_in_pulled_data:
                     row = df.loc[np.datetime64(date)]
