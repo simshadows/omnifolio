@@ -18,6 +18,7 @@ from collections import namedtuple
 import pandas as pd
 
 from .config import get_config
+from .structs import Currency
 
 from .market_data_store import MarketDataStore
 from .market_data_providers.yahoo_finance_lib import YahooFinanceLib
@@ -101,12 +102,47 @@ class MarketDataAggregator:
     ######################################################################################
 
     @staticmethod
-    def stock_timeseries_daily__to_splitadjusted(dfs):
+    def stock_timeseries_daily__convert_numerics_to_object_types(dfs):
         """
         Takes in whatever stock_timeseries_daily() returns.
 
-        Returns a new set of dataframes with all relevant values split-adjusted, with integer
-        types converted to floating point.
+        Converts all currency values to use the Currency type.
+
+        While the use of objects in a pandas DataFrame is slower, it's simpler and easier to work with.
+        """
+        assert isinstance(dfs, dict)
+
+        ret = {}
+        for (symbol, df) in dfs.items():
+            assert str_is_nonempty_and_compact(symbol)
+            assert isinstance(df, pd.DataFrame)
+
+            df = copy.deepcopy(df)
+
+            for column_name in ["open", "high", "low", "close", "adjusted_close"]:
+                op1 = lambda x : Currency(x["unit"], numerator=x[column_name], denominator=x["price_denominator"])
+                df.loc[:, column_name] = df.apply(op1, axis="columns")
+
+            op2 = lambda x : Fraction(x["volume"])
+            df.loc[:, "volume"] = df.apply(op2, axis="columns")
+
+            op3 = lambda x : Currency(x["unit"], numerator=x["exdividend"], denominator=x["dividend_denominator"])
+            df.loc[:, "exdividend"] = df.apply(op3, axis="columns")
+
+            op4 = lambda x : Fraction(x["split"])
+            df.loc[:, "split"] = df.apply(op4, axis="columns")
+
+            df.drop(["unit", "price_denominator", "dividend_denominator"], axis="columns", inplace=True)
+
+            ret[symbol] = df
+        return ret
+
+    @staticmethod
+    def stock_timeseries_daily__to_splitadjusted(dfs):
+        """
+        Takes in whatever stock_timeseries_daily__convert_numerics_to_object_types() returns.
+
+        Returns a new set of dataframes with all relevant values split-adjusted.
         """
         assert isinstance(dfs, dict)
         ret = {}
@@ -129,55 +165,22 @@ class MarketDataAggregator:
             ret[symbol] = df
         return ret
 
-    def stock_timeseries_daily__to_adjclose_summary(self, dfs, split_adjusted=False):
+    def stock_timeseries_daily__to_adjclose_summary(self, dfs):
         """
-        Summarizes important closing values from the data in dfs.
+        Takes in whatever stock_timeseries_daily__convert_numerics_to_object_types or
+        stock_timeseries_daily__to_splitadjusted() returns.
 
-        ---
-
-        Takes in whatever stock_timeseries_daily() returns.
-
-        Returns a single dataframe with two levels of column labels.
-
-        First level is the symbol itself.
-
-        Second level summarizes important columns at close:
-            - 'unit' as a string
-            - 'adjusted_close' as a Fraction
-            - 'exdividend' as a Fraction
-            - 'split' as a numpy double
-        Note that here, we actually express values as a single Fraction object instead of two
-        integer columns that represent a fraction.
-
-        (I'll be reconsidering whether or not Fraction objects are suitable versus pandas native
-        integers with explicit numerator/denominator arithmetic.)
+        Returns a summary of important closing values from the data into a single dfs for convenience.
         """
         assert isinstance(dfs, dict)
         assert all(isinstance(k, str) and isinstance(v, pd.DataFrame) for (k, v) in dfs.items())
         new_index = pandas_index_union(x.index for x in dfs.values())
         new_cols = []
         for (k, v) in dfs.items():
-            new_cols.append(v["unit"].rename((k, "unit")).reindex(index=new_index))
-
-            op1 = lambda x : Fraction(numerator=x["adjusted_close"], denominator=x["price_denominator"])
-            new_cols.append(v.apply(op1, axis="columns").reindex(index=new_index).rename((k, "adjusted_close")))
-
-            op2 = lambda x : Fraction(numerator=x["exdividend"], denominator=x["dividend_denominator"])
-            new_cols.append(v.apply(op2, axis="columns").reindex(index=new_index).rename((k, "exdividend")))
-
-            new_cols.append(v["split"].reindex(index=new_index).rename((k, "split")))
-
+            for column_name in ["adjusted_close", "exdividend", "split"]:
+                new_cols.append(v[column_name].rename((k, column_name)).reindex(index=new_index))
         df = pd.concat(new_cols, axis="columns")
         dump_df_to_csv_debugging_file(df, self._debugging_path, "stock_timeseries_daily__to_adjclose_summary_dataframe.csv")
-
-        if split_adjusted:
-            for symbol in dfs.keys():
-                cum_split = df.loc[:, (symbol, "split")].cumprod()
-                latest_cum_split = cum_split.dropna(axis="index", how="all")[-1]
-                multiply_by = cum_split / latest_cum_split
-                for c in ["adjusted_close", "exdividend"]:
-                    df.loc[:, (symbol, c)] = df.loc[:, (symbol, c)] * multiply_by
-            dump_df_to_csv_debugging_file(df, self._debugging_path, "stock_timeseries_daily__to_adjclose_summary_dataframe_splitadjusted.csv")
         return df
 
     def stock_timeseries_daily__to_dividend_reinvested_scaled(self, dfs):
@@ -192,7 +195,9 @@ class MarketDataAggregator:
         TODO: Document the dataframe's format?
         """
         symbols = set(dfs.keys())
-        df = self.stock_timeseries_daily__to_adjclose_summary(dfs, split_adjusted=True)
+        dfs = self.stock_timeseries_daily__convert_numerics_to_object_types(dfs)
+        dfs = self.stock_timeseries_daily__to_splitadjusted(dfs)
+        df = self.stock_timeseries_daily__to_adjclose_summary(dfs)
         df.fillna(method="ffill", inplace=True)
 
         new_sers = {}

@@ -258,6 +258,7 @@ class PortfolioTracker:
 
         market_data_source = MarketDataAggregator()
         market_data_df = market_data_source.stock_timeseries_daily(list(symbols), update_store=False)
+        market_data_df = market_data_source.stock_timeseries_daily__convert_numerics_to_object_types(market_data_df)
         market_data_df = market_data_source.stock_timeseries_daily__to_adjclose_summary(market_data_df)
         pandas_add_column_level_above(market_data_df, "prices", inplace=True)
         df = market_data_df.join(summary_df)
@@ -267,9 +268,8 @@ class PortfolioTracker:
         for symbol in symbols:
             def fill(i2, val):
                 df.loc[:,("prices", symbol, i2)] = df.loc[:,("prices", symbol, i2)].fillna(value=val)
-            fill("unit", "USD")
-            fill("adjusted_close", Fraction(0))
-            fill("exdividend", Fraction(0))
+            fill("adjusted_close", Currency("USD", 0))
+            fill("exdividend", Currency("USD", 0))
             fill("split", Fraction(1))
 
         dump_df_to_csv_debugging_file(df, debugging_path, "portfolio_value_history_dataframe_intermediate.csv")
@@ -277,19 +277,30 @@ class PortfolioTracker:
         def sum_currency_col(i0, i2):
             sers = []
             for symbol in symbols:
-                coef = 1.0 if symbol.endswith(".AX") else 1.3 # Temporary fix until I figure out forex
+                coef = Fraction(1) if symbol.endswith(".AX") else Fraction(numerator=13, denominator=10) # TODO: Temporary fix until I figure out forex
                 ser = df.loc[:,(i0, symbol, i2)].fillna(value=Currency("USD", 0))
-                ser = ser.apply(lambda x : x.value, convert_dtype=False)
-                ser *= coef
+                ser = ser.apply(lambda x : x.convert("AUD", coef), convert_dtype=False) # Temporary fix until I figure out forex
                 sers.append(ser)
-            return sum(sers)
+            # TODO: Make this sum() version work somehow? The loop of individual += operations is terrible.
+            #return sum(sers)
+            ret = sers[0]
+            for ser in sers[1:]:
+                ret += ser
+            return ret
 
         market_value_sers = []
         for symbol in symbols:
-            coef = 1.0 if symbol.endswith(".AX") else 1.3 # Temporary fix until I figure out forex
-            mv_ser = df.loc[:,("prices", symbol, "adjusted_close")] * df.loc[:,("stocks", symbol, "unit_quantity")] * coef
+            coef = Fraction(1) if symbol.endswith(".AX") else Fraction(numerator=13, denominator=10) # TODO: Temporary fix until I figure out forex
+            mv_ser = df.loc[:,("prices", symbol, "adjusted_close")]#.fillna(value=Currency("USD", 0))
+            mv_ser *= df.loc[:,("stocks", symbol, "unit_quantity")].fillna(value=Fraction(0))
+            #mv_ser = mv_ser.fillna(value=Currency("USD", 0))
+            mv_ser = mv_ser.apply(lambda x : x.convert("AUD", coef), convert_dtype=False) # Temporary fix until I figure out forex
             market_value_sers.append(mv_ser)
-        market_value_ser = sum(market_value_sers)
+        # TODO: Make this sum() version work somehow? The loop of individual += operations is terrible.
+        #market_value_ser = sum(market_value_sers)
+        market_value_ser = market_value_sers[0]
+        for mv_ser in market_value_sers[1:]:
+            market_value_ser += mv_ser
 
         purchase_price_before_fees_ser = sum_currency_col("stocks", "total_value")
         purchase_fees_ser = sum_currency_col("stocks", "total_fees")
@@ -298,10 +309,17 @@ class PortfolioTracker:
 
         dividend_gain_sers = []
         for symbol in symbols:
-            coef = 1.0 if symbol.endswith(".AX") else 1.3 # Temporary fix until I figure out forex
-            dg_ser = (df.loc[:,("prices", symbol, "exdividend")] * df.loc[:,("stocks", symbol, "unit_quantity")]).cumsum()
+            coef = Fraction(1) if symbol.endswith(".AX") else Fraction(numerator=13, denominator=10) # TODO: Temporary fix until I figure out forex
+            dg_ser = df.loc[:,("prices", symbol, "exdividend")].apply(lambda x : x.convert("AUD", coef), convert_dtype=False)
+            dg_ser = (dg_ser * df.loc[:,("stocks", symbol, "unit_quantity")].fillna(value=Fraction(0))).cumsum()
+            #dg_ser = dg_ser.fillna(value=Currency("USD", 0))
+            dg_ser = dg_ser.apply(lambda x : x.convert("AUD", coef), convert_dtype=False) # Temporary fix until I figure out forex
             dividend_gain_sers.append(dg_ser)
-        dividend_gain_ser = sum(dividend_gain_sers)
+        # TODO: Make this sum() version work somehow? The loop of individual += operations is terrible.
+        #dividend_gain_ser = sum(dividend_gain_sers)
+        dividend_gain_ser = dividend_gain_sers[0]
+        for dg_ser in dividend_gain_sers[1:]:
+            dividend_gain_ser += dg_ser
 
         base_value_ser = (
                 purchase_price_before_fees_ser
@@ -309,6 +327,7 @@ class PortfolioTracker:
                 - dividend_gain_ser
                 + total_fees_paid_ser
             )
+        base_value_ser.mask(base_value_ser == 0, other=np.nan, inplace=True)
 
         all_sers = {
                 "market_value": market_value_ser,
@@ -365,15 +384,14 @@ class PortfolioTracker:
         # TODO: How to deal with forex movements?
 
         for symbol in benchmark_symbols:
-            benchmark_currency = drs_df[symbol]["unit"]
             benchmark_unit_price = drs_df[symbol]["drscaled_adjusted_close"]
 
             # pp_changes basically describes how much we bought in our actual portfolio each
             # day, not accounting for fees.
-            pp_changes = df["purchase_price_before_fees"] - df["purchase_price_before_fees"].shift(1, fill_value=Fraction(0))
+            # TODO: Fix this hard-coded currency symbol.
+            pp_changes = df["purchase_price_before_fees"] - df["purchase_price_before_fees"].shift(1, fill_value=Currency("AUD", 0))
 
             joined_sers = {
-                    "benchmark_currency": benchmark_currency,
                     "benchmark_unit_price": benchmark_unit_price,
                     "purchase_price_changes": pp_changes,
                     "actual_portfolio_market_value": df["market_value"],
@@ -399,13 +417,12 @@ class PortfolioTracker:
             proportion_sold_ser.fillna(value=Fraction(0), inplace=True)
             joined_df.insert(len(joined_df.columns), "benchmark_proportion_sold", proportion_sold_ser)
 
-            # currency = TODO
             units_owned = []
             realized_gain = []
             benchmark_purchase_price_before_fees = []
             units_owned_curr = Fraction(0)
-            realized_gain_curr = Fraction(0)
-            benchmark_purchase_price_before_fees_curr = Fraction(0)
+            realized_gain_curr = Currency("AUD", 0) # TODO: fix hardcoded symbol
+            benchmark_purchase_price_before_fees_curr = Currency("AUD", 0) # TODO: fix hardcoded symbol
 
             for (date, row) in joined_df.iterrows():
                 if row["benchmark_units_bought"] > 0:
