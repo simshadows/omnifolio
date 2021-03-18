@@ -18,7 +18,10 @@ from collections import namedtuple
 import pandas as pd
 
 from .config import get_config
-from .structs import Currency
+from .structs import (
+        CurrencyPair,
+        Currency,
+    )
 
 from .market_data_store import MarketDataStore
 from .market_data_providers.yahoo_finance_lib import YahooFinanceLib
@@ -46,6 +49,8 @@ class MarketDataAggregator:
         return
 
     ######################################################################################
+    # stock_timeseries_daily #############################################################
+    ######################################################################################
 
     def stock_timeseries_daily__update_store(self, symbols):
         """
@@ -63,7 +68,7 @@ class MarketDataAggregator:
 
         provider = self._providers[0] # TODO: Use multiple providers later?
 
-        data = provider.stock_timeseries_daily(list(symbols)) # TODO: Remove specific type restriction of symbols?
+        data = provider.stock_timeseries_daily(list(symbols))
 
         assert set(data.keys()) == set(symbols)
         
@@ -231,21 +236,57 @@ class MarketDataAggregator:
             new_cols.append(v.apply(op, axis="columns").reindex(index=new_index, fill_value="-").rename(k))
         return pd.concat(new_cols, axis="columns")
 
-    ## Currently Unused
-    #@staticmethod
-    #def stock_timeseries_daily__to_adjcloseprice_table(dfs):
-    #    """
-    #    Takes in whatever stock_timeseries_daily() returns.
+    ######################################################################################
+    # forex_timeseries_daily #############################################################
+    ######################################################################################
 
-    #    Returns a single dataframe, merging adjusted close prices for all symbols from dfs.
-    #    """
-    #    assert isinstance(dfs, dict)
-    #    assert all(isinstance(k, str) and isinstance(v, pd.DataFrame) for (k, v) in dfs.items())
-    #    new_index = pandas_index_union(x.index for x in dfs.values())
-    #    new_cols = []
-    #    for (k, v) in dfs.items():
-    #        new_cols.append(v["adjusted_close"].rename((k, "numerator")).reindex(index=new_index, fill_value=-1))
-    #        new_cols.append(v["price_denominator"].rename((k, "denominator")).reindex(index=new_index, fill_value=0))
-    #        new_cols.append(v["unit"].rename((k, "unit")).reindex(index=new_index, fill_value="[N/A]"))
-    #    return pd.concat(new_cols, axis="columns")
+    def forex_timeseries_daily__update_store(self, currency_pairs):
+        """
+        Updates (usually by downloading data off the internet) all relevant data for forex_timeseries_daily(),
+        specifically only updating the currency pairs listed.
+
+        Parameters:
+            currency_pairs:
+                A collection of CurrencyPair objects. Collection must contain at least one item.
+        Returns:
+            None
+        """
+        assert all(isinstance(x, CurrencyPair) for x in currency_pairs)
+
+        provider = self._providers[0] # TODO: Use multiple providers later?
+
+        data = provider.forex_timeseries_daily(list(currency_pairs))
+
+        assert set(data.keys()) == set(currency_pairs)
+        
+        store = MarketDataStore(self._config)
+        for pair in currency_pairs:
+            store.update_forex_timeseries_daily(pair, provider.get_provider_name(), data[pair])
+        return
+
+    def forex_timeseries_daily(self, currency_pairs, update_store=True):
+        """
+        Get full daily history of a list of currency pairs.
+
+        Parameters:
+            currency_pairs:
+                A collection of CurrencyPair objects. Collection must contain at least one item.
+            update_store:
+                Automatically calls forex_timeseries_daily__update_store() before compiling
+                the data.
+        Returns:
+            (TODO: Document this later.)
+        """
+        assert isinstance(update_store, bool)
+        if update_store:
+            self.forex_timeseries_daily__update_store(currency_pairs)
+
+        data = MarketDataStore(self._config).get_forex_timeseries_daily(currency_pairs)
+
+        if (set(data.keys()) != set(currency_pairs)):
+            raise RuntimeError
+        if any(len(v) == 0 for (k, v) in data.items()):
+            raise MissingData("Cannot find data for one or more symbols.")
+
+        return data
 
