@@ -7,6 +7,7 @@ License:  GNU Affero General Public License v3 (AGPL-3.0)
 """
 
 from .namedtuples import (
+        CurrencyPair,
         TradeInfo,
         TradeDiff,
     )

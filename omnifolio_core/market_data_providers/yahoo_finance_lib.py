@@ -32,6 +32,9 @@ import yfinance
 
 from ..market_data_provider import MarketDataProvider
 
+from ..structs import (
+        CurrencyPair,
+    )
 from ..utils import (
         str_is_nonempty_and_compact,
         dump_df_to_csv_debugging_file, # Convenient to use occasionally when debugging
@@ -53,6 +56,8 @@ class YahooFinanceLib(MarketDataProvider):
 
     _PRICE_DENOMINATOR = 100
     _DIVIDEND_DENOMINATOR = 1000**3
+    
+    _FOREX_DENOMINATOR = 1000000
 
     def __init__(self):
         # No API key necessary!
@@ -63,6 +68,10 @@ class YahooFinanceLib(MarketDataProvider):
                 - self.FLOATING_POINT_IMPRECISION_DEDUCTION
                 - self.PRECISION_GUESS_DEDUCTION
                 - self.CURRENCY_ADJUSTMENT_DEDUCTION)
+
+    ######################################################################################
+    # stock_timeseries_daily #############################################################
+    ######################################################################################
 
     def stock_timeseries_daily(self, symbols_list):
         if not isinstance(symbols_list, list):
@@ -76,7 +85,7 @@ class YahooFinanceLib(MarketDataProvider):
 
         curr_time = datetime.datetime.utcnow()
 
-        logger.info("Downloading price history.")
+        logger.info("Downloading stock price history.")
         df = self._stock_timeseries_daily__download_raw_data(symbols_list)
         self._stock_timeseries_daily__verify_raw_data_format(df, symbols_list)
         ret = self._stock_timeseries_daily__process_data(df, symbols_list, curr_time)
@@ -120,14 +129,14 @@ class YahooFinanceLib(MarketDataProvider):
         df.sort_index(ascending=True, inplace=True)
 
         logger.info("Downloading symbol currency data.")
-        currencies = self._get_currencies(symbols_list)
+        currencies = self._stock_timeseries_daily__get_currencies(symbols_list)
 
         ret = {}
         for symbol in symbols_list:
             new_df = df[symbol].dropna(axis="index", how="all")
 
-            self._rename_column_labels(new_df)
-            self._change_values_to_presplit_and_sort(new_df)
+            self._stock_timeseries_daily__rename_column_labels(new_df)
+            self._stock_timeseries_daily__change_values_to_presplit_and_sort(new_df)
 
             # Now, we multiply our currencies by their denominators.
 
@@ -196,7 +205,7 @@ class YahooFinanceLib(MarketDataProvider):
     ######################################################################################
 
     @staticmethod
-    def _get_currencies(symbols):
+    def _stock_timeseries_daily__get_currencies(symbols):
         ret = {}
         for symbol in symbols:
             assert str_is_nonempty_and_compact(symbol)
@@ -208,7 +217,7 @@ class YahooFinanceLib(MarketDataProvider):
         return ret
 
     @staticmethod
-    def _rename_column_labels(df):
+    def _stock_timeseries_daily__rename_column_labels(df):
         new_column_names = {
                 "Open":         "open",
                 "High":         "high",
@@ -224,7 +233,7 @@ class YahooFinanceLib(MarketDataProvider):
         return
 
     @staticmethod
-    def _change_values_to_presplit_and_sort(df):
+    def _stock_timeseries_daily__change_values_to_presplit_and_sort(df):
         """
         Transforms the Yahoo Finance library's download() function's split-adjusted values
         to pre-split values.
@@ -252,5 +261,122 @@ class YahooFinanceLib(MarketDataProvider):
         # Divide only the volume column by (latest_cum_split / cum_split)
         df.loc[:, "volume"] /= (latest_cum_split / cum_split)
 
+        return
+
+    ######################################################################################
+    # forex_timeseries_daily #############################################################
+    ######################################################################################
+
+    def forex_timeseries_daily(self, currency_pairs_list):
+        if not isinstance(currency_pairs_list, list):
+            raise TypeError
+        if len(currency_pairs_list) == 0:
+            raise ValueError("Expected non-empty list.")
+        if not all(isinstance(x, CurrencyPair) for x in currency_pairs_list):
+            raise TypeError
+        if len(currency_pairs_list) != len(set(currency_pairs_list)):
+            raise ValueError("List must not have duplicates.")
+
+        curr_time = datetime.datetime.utcnow()
+
+        logger.info("Downloading forex history.")
+        symbols_list = self._forex_timeseries_daily__convert_to_symbols_list(currency_pairs_list)
+        df = self._forex_timeseries_daily__download_raw_data(symbols_list)
+        self._forex_timeseries_daily__verify_raw_data_format(df, symbols_list)
+        ret = self._forex_timeseries_daily__process_data(df, symbols_list, curr_time)
+
+        assert isinstance(ret, dict)
+        assert all(isinstance(k, CurrencyPair) and isinstance(v, pd.DataFrame) for (k, v) in ret.items())
+
+        return ret
+
+    ######################################################################################
+    ######################################################################################
+
+    @staticmethod
+    def _forex_timeseries_daily__convert_to_symbols_list(currency_pairs_list):
+        return [(f"{x.base.strip()}{x.quote.strip()}=X", x) for x in currency_pairs_list]
+
+    @staticmethod
+    def _forex_timeseries_daily__download_raw_data(symbols_list):
+        return yfinance.download(
+                tickers=[x[0] for x in symbols_list],
+                period="max",
+                interval="1d",
+                actions=False,
+                group_by="ticker",
+                threads=True,
+            )
+
+    @staticmethod
+    def _forex_timeseries_daily__verify_raw_data_format(df, symbols_list):
+        if not isinstance(df, pd.DataFrame):
+            raise TypeError
+        if df.index.name != "Date":
+            raise ValueError
+        if (set(x[0] for x in symbols_list) != set(df.columns.levels[0])) or (len(symbols_list) == 0):
+            raise ValueError
+        expected_column_labels = ["Open", "High", "Low", "Close", "Adj Close", "Volume"]
+        if list(df.columns.levels[1]) != expected_column_labels:
+            raise ValueError
+        if df.index.dtype.name != "datetime64[ns]":
+            raise TypeError
+        if not all((x == "float64") or (x == "int64")for x in df.dtypes):
+            raise TypeError
+        if any((df[x[0]]["Close"].dropna() != df[x[0]]["Adj Close"].dropna()).any() for x in symbols_list):
+            raise ValueError("Expected 'Close' to be the exact same ad 'Adj Close'.")
+        if any((df[x[0]]["Volume"].dropna() != 0).any() for x in symbols_list):
+            raise ValueError("Expected 'Volume' to be entirely zero.")
+        return
+
+    def _forex_timeseries_daily__process_data(self, df, symbols_list, data_collection_time):
+        df.sort_index(ascending=True, inplace=True)
+
+        ret = {}
+        for (symbol, currency_pair) in symbols_list:
+            new_df = df[symbol].dropna(axis="index", how="all")
+
+            # We already verified that Adj Close is equivalent to Close, and Volume is all zero.
+            columns_to_delete = ["Adj Close", "Volume"]
+            new_df.drop(columns_to_delete, axis="columns", inplace=True)
+
+            self._forex_timeseries_daily__rename_column_labels(new_df)
+
+            # Now, we multiply our currencies by their denominators.
+            new_df *= self._FOREX_DENOMINATOR
+
+            # We now round, then cast types to integer.
+            new_column_types = {
+                    "open":           _NUMPY_INT,
+                    "high":           _NUMPY_INT,
+                    "low":            _NUMPY_INT,
+                    "close":          _NUMPY_INT,
+                }
+            int_cols_to_retype = list(new_column_types.keys())
+            new_df[int_cols_to_retype] = new_df[int_cols_to_retype].round(decimals=0)
+            new_df = new_df.astype(new_column_types)
+
+            # Add some new columns
+            new_df.insert(len(new_df.columns), "denominator", _NUMPY_INT(self._FOREX_DENOMINATOR))
+            new_df.insert(0, "data_collection_time", data_collection_time)
+            new_df.insert(0, "data_trust_value", self.get_trust_value())
+            new_df.insert(0, "data_source", self.get_provider_name())
+
+            ret[currency_pair] = new_df
+        return ret
+
+    ######################################################################################
+    ######################################################################################
+
+    @staticmethod
+    def _forex_timeseries_daily__rename_column_labels(df):
+        new_column_names = {
+                "Open":         "open",
+                "High":         "high",
+                "Low":          "low",
+                "Close":        "close",
+            }
+        df.rename(columns=new_column_names, inplace=True)
+        df.index.names = ["date"]
         return
 
