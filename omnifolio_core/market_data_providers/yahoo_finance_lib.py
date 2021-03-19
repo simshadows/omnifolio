@@ -99,7 +99,8 @@ class YahooFinanceLib(MarketDataProvider):
     ######################################################################################
 
     def _stock_timeseries_daily__download_raw_data(self, symbols_list):
-        return yfinance.download(
+        assert len(symbols_list) != 0
+        df = yfinance.download(
                 tickers=symbols_list,
                 period="max",
                 interval="1d",
@@ -107,6 +108,9 @@ class YahooFinanceLib(MarketDataProvider):
                 group_by="ticker",
                 threads=True,
             )
+        if len(symbols_list) == 1:
+            df = pd.concat({symbols_list[0]: df}, axis="columns")
+        return df
 
     def _stock_timeseries_daily__verify_raw_data_format(self, df, symbols_list):
         if not isinstance(df, pd.DataFrame):
@@ -299,7 +303,7 @@ class YahooFinanceLib(MarketDataProvider):
 
     @staticmethod
     def _forex_timeseries_daily__download_raw_data(symbols_list):
-        return yfinance.download(
+        df = yfinance.download(
                 tickers=[x[0] for x in symbols_list],
                 period="max",
                 interval="1d",
@@ -307,6 +311,9 @@ class YahooFinanceLib(MarketDataProvider):
                 group_by="ticker",
                 threads=True,
             )
+        if len(symbols_list) == 1:
+            df = pd.concat({symbols_list[0][0]: df}, axis="columns")
+        return df
 
     @staticmethod
     def _forex_timeseries_daily__verify_raw_data_format(df, symbols_list):
