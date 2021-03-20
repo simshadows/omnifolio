@@ -29,7 +29,7 @@ from .utils import (
         create_json_writable_debugging_structure
     )
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 class PortfolioHoldingsAvgCost:
 

@@ -37,11 +37,11 @@ from ..structs import (
     )
 from ..utils import (
         str_is_nonempty_and_compact,
+        pandas_add_column_level_above,
         dump_df_to_csv_debugging_file, # Convenient to use occasionally when debugging
     )
 
-logger = logging.getLogger(__name__)
-
+_logger = logging.getLogger(__name__)
 
 
 _NUMPY_INT = np.longlong
@@ -49,7 +49,6 @@ _NUMPY_FLOAT = np.double
 
 _INT_MAX = np.iinfo(_NUMPY_INT).max
 assert np.iinfo(_NUMPY_INT).bits >= 64
-
 
 
 class YahooFinanceLib(MarketDataProvider):
@@ -85,7 +84,7 @@ class YahooFinanceLib(MarketDataProvider):
 
         curr_time = datetime.datetime.utcnow()
 
-        logger.info("Downloading stock price history.")
+        _logger.info("Downloading stock price history.")
         df = self._stock_timeseries_daily__download_raw_data(symbols_list)
         self._stock_timeseries_daily__verify_raw_data_format(df, symbols_list)
         ret = self._stock_timeseries_daily__process_data(df, symbols_list, curr_time)
@@ -109,7 +108,7 @@ class YahooFinanceLib(MarketDataProvider):
                 threads=True,
             )
         if len(symbols_list) == 1:
-            df = pd.concat({symbols_list[0]: df}, axis="columns")
+            df = pandas_add_column_level_above(df, symbols_list[0])
         return df
 
     def _stock_timeseries_daily__verify_raw_data_format(self, df, symbols_list):
@@ -132,7 +131,7 @@ class YahooFinanceLib(MarketDataProvider):
     def _stock_timeseries_daily__process_data(self, df, symbols_list, data_collection_time):
         df.sort_index(ascending=True, inplace=True)
 
-        logger.info("Downloading symbol currency data.")
+        _logger.info("Downloading symbol currency data.")
         currencies = self._stock_timeseries_daily__get_currencies(symbols_list)
 
         ret = {}
@@ -159,10 +158,10 @@ class YahooFinanceLib(MarketDataProvider):
                     assert isinstance(row_has_fractional_volume, bool)
                     if row_has_fractional_volume:
                         sample_row = new_df.loc[row_index]
-                        logger.warning(f"Unexpected fractional volume for symbol {symbol}. "
-                                       "This shouldn't have happened. "
-                                       "This will be rounded to the nearest integer. "
-                                       f"\nSample: \n{row_index}\n{sample_row}\n")
+                        _logger.warning(f"Unexpected fractional volume for symbol {symbol}. "
+                                        "This shouldn't have happened. "
+                                        "This will be rounded to the nearest integer. "
+                                        f"\nSample: \n{row_index}\n{sample_row}\n")
                         break
                 else:
                     raise RuntimeError("Expected to find a sample.")
@@ -283,7 +282,7 @@ class YahooFinanceLib(MarketDataProvider):
 
         curr_time = datetime.datetime.utcnow()
 
-        logger.info("Downloading forex history.")
+        _logger.info("Downloading forex history.")
         symbols_list = self._forex_timeseries_daily__convert_to_symbols_list(currency_pairs_list)
         df = self._forex_timeseries_daily__download_raw_data(symbols_list)
         self._forex_timeseries_daily__verify_raw_data_format(df, symbols_list)
@@ -312,7 +311,7 @@ class YahooFinanceLib(MarketDataProvider):
                 threads=True,
             )
         if len(symbols_list) == 1:
-            df = pd.concat({symbols_list[0][0]: df}, axis="columns")
+            df = pandas_add_column_level_above(df, symbols_list[0][0])
         return df
 
     @staticmethod

@@ -23,7 +23,7 @@ from .structs import CurrencyPair
 
 from .utils import fwrite_json, fread_json
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 
 

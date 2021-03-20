@@ -14,7 +14,10 @@ from copy import copy
 from math import isnan
 from fractions import Fraction
 
-from ..utils import fraction_to_decimal
+from ..utils import (
+        public,
+        fraction_to_decimal,
+    )
 
 
 def _unary_magic_calc_op(method):
@@ -107,6 +110,7 @@ def _binary_magic_comparison_op(method):
     return fn
 
 
+@public
 class Currency:
     """
     Objects instantiated by this class can be considered immutable and hashable.

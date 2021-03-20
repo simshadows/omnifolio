@@ -11,6 +11,7 @@ This file does not contain any dependencies towards any other file within this c
 """
 
 import os
+import sys
 import re
 import logging
 import json
@@ -20,15 +21,44 @@ from uuid import uuid4
 from fractions import Fraction
 from decimal import Decimal
 
-import pandas as pd
-
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 _CWD = os.getcwd()
 _ENCODING = "utf-8"
 
-re_decimal = re.compile(r"^\d*[.,]?\d*$")
+##########################################################################################
+# '__all__' Management ###################################################################
+##########################################################################################
 
+def public(obj):
+    """"
+    Automatically adds the object's name to '__all__'.
+    Also automatically sets '__all__ = []' for a module on first call.
+
+    Originally from:
+        <https://code.activestate.com/recipes/576993-public-decorator-adds-an-item-to-__all__/>
+    By user 'Sam Denton', accessed on 2021-03-20.
+    Additional notes:
+        * Based on an idea by Duncan Booth:
+          <http://groups.google.com/group/comp.lang.python/msg/11cbb03e09611b8a>
+        * Improved via a suggestion by Dave Angel:
+          <http://groups.google.com/group/comp.lang.python/msg/3d400fb22d8a42e1>
+    """
+    module_all = sys.modules[obj.__module__].__dict__.setdefault('__all__', [])
+    if obj.__name__ not in module_all:
+        module_all.append(obj.__name__)
+    return obj
+
+public(public) # Export public itself
+
+##########################################################################################
+# Everything Else ########################################################################
+##########################################################################################
+
+re_decimal = re.compile(r"^\d*[.,]?\d*$")
+__all__.append("re_decimal")
+
+@public
 def mkdir_recursive_for_filepath(relfilepath):
     absfilepath = os.path.join(_CWD, relfilepath)
     absdir = os.path.dirname(absfilepath)
@@ -39,16 +69,19 @@ def mkdir_recursive_for_filepath(relfilepath):
     return
 
 # This overwrites whatever file is specified with the data.
+@public
 def fwrite_json(relfilepath, data=None):
     mkdir_recursive_for_filepath(relfilepath)
     with open(relfilepath, encoding=_ENCODING, mode="w") as f:
         f.write(json.dumps(data, sort_keys=True, indent=4))
     return
 
+@public
 def fread_json(relfilepath):
     with open(relfilepath, encoding=_ENCODING, mode="r") as f:
         return json.loads(f.read())
 
+@public
 def str_is_nonempty_and_compact(obj):
     return (
             isinstance(obj, str)
@@ -56,9 +89,11 @@ def str_is_nonempty_and_compact(obj):
             and (obj == obj.strip())
         )
 
+@public
 def fraction_to_decimal(fraction_obj):
     return Decimal(fraction_obj.numerator) / Decimal(fraction_obj.denominator)
 
+@public
 def generate_unused_key(desired_key, container, key_regenerator=lambda x : x + str(uuid4())):
     """
     Returns 'desired_key' or some modified version of it that tests False to '(desired_key in container)'.
@@ -79,9 +114,11 @@ def generate_unused_key(desired_key, container, key_regenerator=lambda x : x + s
             return new_key
     raise RuntimeError("Reached an unreachable section.")
 
+@public
 def has_callable_attr(obj, attr_name):
     return hasattr(obj, attr_name) and callable(getattr(obj, attr_name))
 
+@public
 def create_json_writable_debugging_structure(obj):
     """
     Generates an intended-for-debugging-use json-serializable version of 'obj'.
@@ -123,60 +160,4 @@ def create_json_writable_debugging_structure(obj):
     #obj_type_str = str(type(obj))
     #raise RuntimeError(f"{obj_type_str} is not a supported type by create_json_writable_debugging_structure().")
     return str(obj)
-
-def pandas_index_union(iterable_obj):
-    ret = None
-    for index_obj in iterable_obj:
-        assert isinstance(index_obj, pd.Index)
-        if ret is None:
-            ret = deepcopy(index_obj)
-        else:
-            ret = ret.union(index_obj)
-    return ret
-
-def pandas_add_column_level_above(df, new_level_name, *, inplace):
-    """
-    Adds a level above the current column levels, and sets the new level to new_level_name
-    for all columns.
-
-    For example:
-
-          A B C D
-        a 0 1 2 3
-        b 4 5 6 7
-        c 8 9 0 1
-
-    After running pandas_add_column_level_above(df, "X", inplace=True):
-
-          X X X X
-          A B C D
-        a 0 1 2 3
-        b 4 5 6 7
-        c 8 9 0 1
-
-    inplace must be set to True, otherwise the function throws an error.
-    (This is to make it clear that the function will be modifying df.)
-
-    Returns df.
-    """
-    if not inplace:
-        raise NotImplementedError("inplace=False operation is not yet implemented.")
-    assert isinstance(df, pd.DataFrame)
-    assert isinstance(new_level_name, str)
-    df.columns = pd.MultiIndex.from_tuples([(new_level_name,) + tuple(x) for x in df.columns])
-    return df
-
-def dump_df_to_csv_debugging_file(df, debugging_path, filename):
-    assert isinstance(df, pd.DataFrame)
-    assert isinstance(filename, str)
-
-    filepath = os.path.join(
-            debugging_path,
-            filename,
-        )
-    logging.debug(f"Writing to debugging file '{filepath}'.")
-    mkdir_recursive_for_filepath(filepath)
-    with open(filepath, "w") as f:
-        f.write(df.dropna(how="all").to_csv())
-    return
 

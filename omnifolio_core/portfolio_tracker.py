@@ -32,7 +32,7 @@ from .utils import (
         dump_df_to_csv_debugging_file,
     )
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 _PORTFOLIO_HISTORY_DEBUGGING__FILEPATH = "portfolio_history.json"
 
@@ -260,7 +260,7 @@ class PortfolioTracker:
         market_data_df = market_data_source.stock_timeseries_daily(list(symbols), update_store=False)
         market_data_df = market_data_source.stock_timeseries_daily__convert_numerics_to_object_types(market_data_df)
         market_data_df = market_data_source.stock_timeseries_daily__to_adjclose_summary(market_data_df)
-        pandas_add_column_level_above(market_data_df, "prices", inplace=True)
+        market_data_df = pandas_add_column_level_above(market_data_df, "prices")
         df = market_data_df.join(summary_df)
         assert df.index.is_monotonic
 

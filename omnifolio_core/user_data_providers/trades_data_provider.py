@@ -18,7 +18,7 @@ from itertools import chain
 from ..structs import TradeInfo, Currency
 from ..utils import re_decimal
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 _TRADES_FILEPATH = "trades.csv"
 
@@ -139,15 +139,15 @@ def get_trades(user_data_path):
         )
 
     if not os.path.isfile(filepath):
-        logger.debug(f"No trades file at path {filepath}.")
-        logger.debug(f"Creating a new trades file.")
+        _logger.debug(f"No trades file at path {filepath}.")
+        _logger.debug(f"Creating a new trades file.")
         with open(filepath, "w") as f:
             csv.writer(f, dialect="excel").writerows(_SAMPLE_TRADES_FILE_DATA)
-        logger.debug(f"New trades file saved.")
+        _logger.debug(f"New trades file saved.")
 
     data = None
 
-    logger.debug(f"Reading trades file at {filepath}.")
+    _logger.debug(f"Reading trades file at {filepath}.")
     with open(filepath, "r") as f:
         data = list(list(x) for x in csv.reader(f))
 

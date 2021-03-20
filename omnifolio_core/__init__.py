@@ -13,6 +13,9 @@ from .structs import (
         CurrencyPair,
         Currency,
     )
+from .market_data_providers import (
+        YahooFinanceLib,
+    )
 from .market_data_aggregator import MarketDataAggregator
 from .portfolio_tracker import PortfolioTracker
 

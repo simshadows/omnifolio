@@ -10,6 +10,8 @@ This file contains commonly used namedtuple class definitions.
 
 from collections import namedtuple
 
+from ..utils import public
+
 _CurrencyPairBaseClass = namedtuple(
     "_CurrencyPairBaseClass",
     [
@@ -18,6 +20,7 @@ _CurrencyPairBaseClass = namedtuple(
     ],
 )
 
+@public
 class CurrencyPair(_CurrencyPairBaseClass):
     __slots__ = []
 
@@ -26,27 +29,31 @@ class CurrencyPair(_CurrencyPairBaseClass):
         assert isinstance(self.quote, str) and (len(self.quote.strip()) != 0)
         return f"{self.base}/{self.quote}"
 
-TradeInfo = namedtuple(
-    "TradeInfo",
-    [
-        "comment",
-        "trade_date",
-        "account",
+TradeInfo = public(
+    namedtuple(
+        "TradeInfo",
+        [
+            "comment",
+            "trade_date",
+            "account",
 
-        "ric_symbol",
-        "trade_type",
+            "ric_symbol",
+            "trade_type",
 
-        "unit_quantity",
-        "unit_price",
-        "total_fees",
-    ],
+            "unit_quantity",
+            "unit_price",
+            "total_fees",
+        ],
+    ),
 )
 
-TradeDiff = namedtuple(
-    "TradeDiff",
-    [
-        "acquired",
-        "disposed",
-    ],
+TradeDiff = public(
+    namedtuple(
+        "TradeDiff",
+        [
+            "acquired",
+            "disposed",
+        ],
+    ),
 )
 

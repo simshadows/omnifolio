@@ -35,11 +35,11 @@ _CONFIG_TYPES = {
     "preferred_currency": str,
 }
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 def get_config():
     if os.path.isfile(_CONFIG_PATH):
-        logger.debug("Reading configuration file.")
+        _logger.debug("Reading configuration file.")
         data = fread_json(_CONFIG_PATH)
         backup = deepcopy(data)
 
@@ -52,7 +52,7 @@ def get_config():
         for (key, default_value) in _DEFAULT_CONFIG.items():
             assert isinstance(default_value, _CONFIG_TYPES[key])
             if key not in data:
-                logger.warning(f"Key '{key}' not found in configuration file. Using default value.")
+                _logger.warning(f"Key '{key}' not found in configuration file. Using default value.")
                 data[key] = deepcopy(default_value)
                 updated = True
             elif not isinstance(data[key], _CONFIG_TYPES[key]):
@@ -60,7 +60,7 @@ def get_config():
                 raise TypeError(f"Value of key '{key}' in configuration file must be of type {type_name}.")
 
         if updated:
-            logger.warning(f"Saving updated configuration file.")
+            _logger.warning(f"Saving updated configuration file.")
             fwrite_json(_BACKUP_PATH, data=backup)
             fwrite_json(_CONFIG_PATH, data=data)
 
@@ -71,9 +71,9 @@ def get_config():
 
         return data
     else:
-        logger.debug("No configuration file found.")
-        logger.debug("Creating a new configuration file.")
+        _logger.debug("No configuration file found.")
+        _logger.debug("Creating a new configuration file.")
         fwrite_json(_CONFIG_PATH, data=_DEFAULT_CONFIG)
-        logger.debug("New configuration file saved.")
+        _logger.debug("New configuration file saved.")
         return _DEFAULT_CONFIG
 

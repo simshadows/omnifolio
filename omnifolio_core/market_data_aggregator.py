@@ -24,7 +24,7 @@ from .structs import (
     )
 
 from .market_data_store import MarketDataStore
-from .market_data_providers.yahoo_finance_lib import YahooFinanceLib
+from .market_data_providers import YahooFinanceLib
 
 from .exceptions import MissingData
 from .utils import (
@@ -33,7 +33,7 @@ from .utils import (
         dump_df_to_csv_debugging_file,
     )
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 
 
