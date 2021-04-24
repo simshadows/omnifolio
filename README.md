@@ -45,6 +45,10 @@ I currently have no checks in place for whether a `fractions.Fraction` or `decim
 
 This will need to be audited for in the future.
 
+### Need to implement rounding where appropriate
+
+This should cut precision errors away.
+
 ### I have no idea how taxation works.
 
 If you sell, can you use cost bases from another brokerage account to calculate the realized capital gain?

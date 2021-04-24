@@ -15,6 +15,7 @@ from fractions import Fraction
 from decimal import Decimal
 from collections import namedtuple
 
+import numpy as np
 import pandas as pd
 
 from .config import get_config
@@ -25,6 +26,7 @@ from .structs import (
 
 from .market_data_store import MarketDataStore
 from .market_data_providers import YahooFinanceLib
+from .user_data_providers import get_stock_dividend_overrides
 
 from .exceptions import MissingData
 from .utils import (
@@ -42,6 +44,7 @@ class MarketDataAggregator:
     def __init__(self, config=get_config()):
         self._config = config
         self._debugging_path = config["debugging_path"]
+        self._market_data_overrides_path = config["market_data_overrides_path"]
 
         self._providers = [
                 YahooFinanceLib(),
@@ -51,6 +54,44 @@ class MarketDataAggregator:
     ######################################################################################
     # stock_timeseries_daily #############################################################
     ######################################################################################
+
+    def _stock_timeseries_daily__add_user_overrides(self, data):
+        assert isinstance(data, dict)
+        assert all(isinstance(x[0], str) and isinstance(x[1], pd.DataFrame) for x in data.items())
+
+        stock_dividend_overrides = get_stock_dividend_overrides(self._market_data_overrides_path)
+
+        for (symbol, df) in data.items():
+            if symbol in stock_dividend_overrides:
+                max_date = df.index.max()
+                min_date = df.index.min()
+                index_as_set = set(df.index)
+                for (date, exdividend_value) in stock_dividend_overrides[symbol].items():
+                    if (date < min_date) or (date > max_date):
+                        continue
+                    
+                    # TODO: Implement a proper element membership test, rather than building a new intermediate set.
+                    #print(df.index.isin([date]))
+                    #print(type(df.index.isin([date])))
+                    #print(np.any(df.index.isin([date])))
+                    #if date in df.index:
+                    #if np.any(df.index.isin([date])):
+                    #    print("       [in]")
+                    #else:
+                    #    print("       [not in]")
+
+                    if pd.Timestamp(date) not in index_as_set:
+                        raise NotImplementedError("Not yet implemented a way to deal with missing days.")
+
+                    if df.at[pd.Timestamp(date), "unit"] != exdividend_value.symbol:
+                        raise NotImplementedError("Not yet implemented a way to deal with this corner case.")
+
+                    numerator, denominator = exdividend_value.value.as_integer_ratio()
+                    assert isinstance(numerator, int)
+                    assert isinstance(denominator, int)
+                    df.at[pd.Timestamp(date), "exdividend"] = numerator
+                    df.at[pd.Timestamp(date), "dividend_denominator"] = denominator
+        return
 
     def stock_timeseries_daily__update_store(self, symbols):
         """
@@ -101,6 +142,8 @@ class MarketDataAggregator:
             raise RuntimeError
         if any(len(v) == 0 for (k, v) in data.items()):
             raise MissingData("Cannot find data for one or more symbols.")
+
+        self._stock_timeseries_daily__add_user_overrides(data)
 
         return data
 

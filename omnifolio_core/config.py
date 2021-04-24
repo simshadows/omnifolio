@@ -66,6 +66,7 @@ def get_config():
 
         # We now write new config keys, derived from the existing ones.
         data["debugging_path"] = os.path.join(data["generated_data_path"], "debugging")
+        data["market_data_overrides_path"] = os.path.join(data["user_data_path"], "market_data_overrides")
         # And we clean up existing ones
         data["preferred_currency"] = data["preferred_currency"].strip()
 

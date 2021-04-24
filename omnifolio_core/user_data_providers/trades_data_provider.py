@@ -112,6 +112,7 @@ _SAMPLE_TRADES_FILE_DATA = [
     ],
 ]
 
+# TODO: Deduplicate this function. (Other function is found in stock_dividends.py)
 def _only_allow_nonempty_str(s, name):
     assert isinstance(s, str)
     assert isinstance(name, str)
@@ -120,6 +121,7 @@ def _only_allow_nonempty_str(s, name):
         raise ValueError(f"{name} must be non-empty.")
     return s
 
+# TODO: Deduplicate this function. (Other function is found in stock_dividends.py)
 def _only_allow_decimal_rep(s, name):
     assert isinstance(s, str)
     assert isinstance(name, str)
@@ -156,14 +158,14 @@ def get_trades(user_data_path):
     assert all(isinstance(x, str) for x in chain(*data))
     
     if len(data) == 0:
-        raise ValueError("CSV file '{filepath}' must be non-empty.")
+        raise ValueError(f"CSV file '{filepath}' must be non-empty.")
     if not all((len(x) == 13) for x in data):
-        raise ValueError("CSV file '{filepath}' must be comprised of only 13-column rows.")
+        raise ValueError(f"CSV file '{filepath}' must be comprised of only 13-column rows.")
 
     # We check the first row, which should just be labels, then we strip it away.
 
     if data[0] != _SAMPLE_TRADES_FILE_DATA[0]:
-        raise ValueError("CSV file '{filepath}' must contain the column labels row.")
+        raise ValueError(f"CSV file '{filepath}' must contain the column labels row.")
     del data[0]
 
     ret = []
@@ -187,18 +189,22 @@ def get_trades(user_data_path):
 
         unit_quantity = _only_allow_decimal_rep(row[5], "Unit quantity")
         unit_price = _only_allow_decimal_rep(row[6], "Unit price")
-        unit_currency = _only_allow_nonempty_str(row[7], "Unit currency")
+        unit_currency = _only_allow_nonempty_str(row[7], "Unit currency").upper()
 
         if unit_quantity <= 0:
             raise ValueError("Unit quantity must be greater than zero.")
         if unit_price < 0:
             raise ValueError("Unit price must not be negative.")
+        if not unit_currency.isalpha():
+            raise ValueError("Unit currency must only be alphabet characters.")
 
         fees = _only_allow_decimal_rep(row[8], "Fees")
-        fees_currency = _only_allow_nonempty_str(row[9], "Fees currency")
+        fees_currency = _only_allow_nonempty_str(row[9], "Fees currency").upper()
 
         if fees < 0:
             raise ValueError("Fees must not be negative.")
+        if not fees_currency.isalpha():
+            raise ValueError("Fees currency must only be alphabet characters.")
 
         unit_quantity_denominator = _only_allow_decimal_rep(row[10], "Unit quantity denominator")
         unit_price_denominator = _only_allow_decimal_rep(row[11], "Unit price denominator")

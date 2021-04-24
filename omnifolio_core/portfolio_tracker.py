@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 
 from .market_data_aggregator import MarketDataAggregator
-from .user_data_providers.trades_data_provider import get_trades
+from .user_data_providers import get_trades
 from .portfolio_holdings_avg_cost import PortfolioHoldingsAvgCost
 
 from .config import get_config
@@ -257,6 +257,7 @@ class PortfolioTracker:
         symbols = set(summary_df.columns.levels[1])
 
         market_data_source = MarketDataAggregator()
+        # TODO: stock_timeseries_daily is called twice. Deduplicate it?
         market_data_df = market_data_source.stock_timeseries_daily(list(symbols), update_store=False)
         market_data_df = market_data_source.stock_timeseries_daily__convert_numerics_to_object_types(market_data_df)
         market_data_df = market_data_source.stock_timeseries_daily__to_adjclose_summary(market_data_df)
@@ -376,6 +377,7 @@ class PortfolioTracker:
         assert len(benchmark_symbols) == len(set(benchmark_symbols))
 
         market_data_source = MarketDataAggregator()
+        # TODO: stock_timeseries_daily is called twice. Deduplicate it?
         market_data_df = market_data_source.stock_timeseries_daily(benchmark_symbols, update_store=False)
         drs_df = market_data_source.stock_timeseries_daily__to_dividend_reinvested_scaled(market_data_df)
         assert drs_df.index.is_monotonic
