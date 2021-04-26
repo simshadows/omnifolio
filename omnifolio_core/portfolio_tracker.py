@@ -93,14 +93,43 @@ class PortfolioTracker:
 
         df2 = self._get_last_element_of_summary_df_as_unstacked()
 
-        assert (df.columns == pd.Index(["total_value",
-                                        "total_fees",
-                                        "unit_quantity"])).all()
-        assert (df2.columns == pd.MultiIndex.from_tuples([("cumulative", "total_fees_paid"),
-                                                          ("cumulative", "total_realized_capital_gain_before_fees"),
-                                                          ("stocks", "total_fees"),
-                                                          ("stocks", "total_value"),
-                                                          ("stocks", "unit_quantity")])).all()
+        market_data_source = MarketDataAggregator()
+        market_data_dfs = market_data_source.stock_timeseries_daily(list(df2.index), update_store=False)
+        market_data_dfs = market_data_source.stock_timeseries_daily__convert_numerics_to_object_types(market_data_dfs)
+        latest_market_values_df = market_data_source.stock_timeseries_daily__to_latest_values_df(market_data_dfs)
+        cols_to_keep = [
+                "date",
+                "adjusted_close",
+                "last_exdiv_date",
+                "last_exdiv",
+                "last_split_date",
+                "last_split",
+            ]
+        df3 = latest_market_values_df[cols_to_keep]
+        new_cols = pd.Index([
+                "price_date",
+                "unit_price",
+                "last_exdiv_date",
+                "last_exdiv",
+                "last_split_date",
+                "last_split",
+            ])
+        df3.columns = new_cols
+        df3 = pandas_add_column_level_above(df3, "market_data")
+
+        # Verify DataFrame formats
+        assert (df.columns == pd.Index([
+                "total_value",
+                "total_fees",
+                "unit_quantity",
+            ])).all()
+        assert (df2.columns == pd.MultiIndex.from_tuples([
+                ("cumulative", "total_fees_paid"),
+                ("cumulative", "total_realized_capital_gain_before_fees"),
+                ("stocks", "total_fees"),
+                ("stocks", "total_value"),
+                ("stocks", "unit_quantity"),
+            ])).all()
         assert set(df.index) <= set(df2.index)
 
         # Change column labels
@@ -118,7 +147,10 @@ class PortfolioTracker:
         df.loc[:,("open_position", "total_price")].fillna(value=fill_values, inplace=True)
         fill_values = df.loc[:,("cumulative", "total_fees_paid")].apply(lambda x : Currency(x.symbol, 0))
         df.loc[:,("open_position", "fees_included")].fillna(value=fill_values, inplace=True)
-        df.index.names = ["symbol"]
+
+        # Merge in market data
+        df = df3.merge(df, how="outer", left_index=True, right_index=True)
+        df.index.names = ["ric_symbol"]
 
         # Run some data sanity checks
         if (df.loc[:,("open_position", "units")] != df.loc[:,("stocks", "unit_quantity")]).any():
@@ -145,28 +177,63 @@ class PortfolioTracker:
         df.loc[:, ("cumulative", "total_realized_capital_gain_before_fees")] -= df.loc[:, ("cumulative", "total_fees_paid")]
         # TODO: Make this only rename what's needed rather than setting the entire index at once.
         new_cols = pd.MultiIndex.from_tuples([
-            ("open_position", "total_price"),
-            ("open_position", "fees_included"),
-            ("open_position", "units"),
-            ("closed_position", "fees_included"),
-            ("closed_position", "realized_capital_gain"),
-        ])
+                ("market_data", "price_date"),
+                ("market_data", "unit_price"),
+                ("market_data", "last_exdiv_date"),
+                ("market_data", "last_exdiv"),
+                ("market_data", "last_split_date"),
+                ("market_data", "last_split"),
+                ("open_position", "total_price"),
+                ("open_position", "fees_included"),
+                ("open_position", "units"),
+                ("closed_position", "fees_included"),
+                ("closed_position", "realized_capital_gain"),
+            ])
         df.columns = new_cols
+
+        # Add new column
+        position_market_values = df["open_position"]["units"] * df["market_data"]["unit_price"]
+        df.insert(len(df.columns), ("open_position", "total_mkt_value"), position_market_values)
+
+        # Add new column
+        unrealized_capital_gain = df["open_position"]["total_mkt_value"] - df["open_position"]["total_price"]
+        df.insert(len(df.columns), ("open_position", "unrealized_capital_gain"), unrealized_capital_gain)
+
+        # Add new column
+        net_gain = df["open_position"]["unrealized_capital_gain"] + df["closed_position"]["realized_capital_gain"]
+        df.insert(len(df.columns), ("total", "net_gain"), net_gain)
+
+        # Add stand-in column
+        df.insert(len(df.columns), ("closed_position", "dividend_gain"), NotImplemented)
+
+        # Add stand-in column
+        df.insert(len(df.columns), ("closed_position", "forex_gain"), NotImplemented)
 
         # Reorder columns
         new_column_order = [
+                ("market_data", "price_date"),
+                ("market_data", "unit_price"),
+                ("market_data", "last_exdiv_date"),
+                ("market_data", "last_exdiv"),
+                ("market_data", "last_split_date"),
+                ("market_data", "last_split"),
                 ("open_position", "units"),
                 ("open_position", "total_price"),
                 ("open_position", "fees_included"),
+                ("open_position", "total_mkt_value"),
+                ("open_position", "unrealized_capital_gain"),
                 ("closed_position", "realized_capital_gain"),
+                ("closed_position", "dividend_gain"),
+                ("closed_position", "forex_gain"),
                 ("closed_position", "fees_included"),
+                ("total", "net_gain"),
             ]
         df = df[new_column_order]
 
         if human_readable_strings:
             # Sort
             df.sort_index(axis="index", inplace=True)
-            #df.sort_values(by=[("open_position", "units"), "symbol"], axis="index", inplace=True)
+            #df.sort_values(by=[("open_position", "units"), "ric_symbol"], axis="index", inplace=True)
 
             # Move all closed positions to the end
             all_open = df.loc[df.loc[:, ("open_position", "units")] != 0]
@@ -174,14 +241,22 @@ class PortfolioTracker:
             df = all_open.append(all_closed)
 
             # Round numbers
-            cols_to_round = [
+            round_2dc_cols = [
                     ("open_position", "total_price"),
                     ("open_position", "fees_included"),
+                    ("open_position", "total_mkt_value"),
+                    ("open_position", "unrealized_capital_gain"),
                     ("closed_position", "realized_capital_gain"),
                     ("closed_position", "fees_included"),
+                    ("total", "net_gain"),
                 ]
-            for col_name in cols_to_round:
-                df.loc[:, col_name] = df.loc[:, col_name].apply(lambda x : round(x, 3).rounded_str())
+            round_3dc_cols = [
+                    ("market_data", "unit_price"),
+                ]
+            for col_name in round_2dc_cols:
+                df.loc[:, col_name] = df.loc[:, col_name].apply(lambda x : x.rounded_str(decimal_places=2))
+            for col_name in round_3dc_cols:
+                df.loc[:, col_name] = df.loc[:, col_name].apply(lambda x : x.rounded_str(decimal_places=3))
         return df
 
     def get_aggregate_summary(self):
@@ -385,7 +460,7 @@ class PortfolioTracker:
         symbols = set(summary_df.columns.levels[1])
 
         market_data_source = MarketDataAggregator()
-        # TODO: stock_timeseries_daily is called twice. Deduplicate it?
+        # TODO: stock_timeseries_daily is called three times. Deduplicate it?
         market_data_df = market_data_source.stock_timeseries_daily(list(symbols), update_store=False)
         market_data_df = market_data_source.stock_timeseries_daily__convert_numerics_to_object_types(market_data_df)
         market_data_df = market_data_source.stock_timeseries_daily__to_adjclose_summary(market_data_df)
@@ -505,7 +580,7 @@ class PortfolioTracker:
         assert len(benchmark_symbols) == len(set(benchmark_symbols))
 
         market_data_source = MarketDataAggregator()
-        # TODO: stock_timeseries_daily is called twice. Deduplicate it?
+        # TODO: stock_timeseries_daily is called three times. Deduplicate it?
         market_data_df = market_data_source.stock_timeseries_daily(benchmark_symbols, update_store=False)
         drs_df = market_data_source.stock_timeseries_daily__to_dividend_reinvested_scaled(market_data_df)
         assert drs_df.index.is_monotonic

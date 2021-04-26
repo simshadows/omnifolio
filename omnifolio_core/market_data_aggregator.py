@@ -231,6 +231,81 @@ class MarketDataAggregator:
         dump_df_to_csv_debugging_file(df, self._debugging_path, "stock_timeseries_daily__to_adjclose_summary_dataframe.csv")
         return df
 
+    def stock_timeseries_daily__to_latest_values_df(self, dfs):
+        """
+        Takes in whatever stock_timeseries_daily__convert_numerics_to_object_types or
+        stock_timeseries_daily__to_splitadjusted() returns.
+
+        Returns a summary of all the latest values for all symbols in a single DataFrame, for convenience.
+        """
+        assert isinstance(dfs, dict)
+
+        rows = []
+        for (symbol, df) in dfs.items():
+            assert isinstance(symbol, str)
+            assert isinstance(df, pd.DataFrame)
+
+            #
+            # First, we find out when the last dividend was.
+            #
+
+            exdiv_rows_df = df.loc[df["exdividend"].apply(lambda x : x.value != 0)]
+
+            last_exdiv_date = np.nan
+            last_exdiv_value = np.nan
+            if len(exdiv_rows_df) > 0:
+                last_exdiv_row = exdiv_rows_df.iloc[-1]
+
+                last_exdiv_date = last_exdiv_row.name
+                last_exdiv_value = last_exdiv_row["exdividend"]
+
+            #
+            # Now, we find out when the last split was.
+            #
+
+            splitevent_rows_df = df.loc[df["split"] != 1]
+
+            last_splitevent_date = np.nan
+            last_splitevent_value = np.nan
+            if len(splitevent_rows_df) > 0:
+                last_splitevent_row = splitevent_rows_df.iloc[-1]
+
+                last_splitevent_date = last_splitevent_row.name
+                last_splitevent_value = last_splitevent_row["split"]
+
+            #
+            # Now, we build the last row.
+            #
+
+            last_row = df.iloc[-1]
+
+            # Delete unimportant keys
+            keys_to_delete = [
+                    "data_source",
+                    "data_trust_value",
+                ]
+            last_row = last_row.drop(labels=keys_to_delete)
+
+            # Add date as a key-value pair to the series
+            date = last_row.name
+            new_data = {
+                    "date": date,
+                    "last_exdiv_date": last_exdiv_date,
+                    "last_exdiv": last_exdiv_value,
+                    "last_split_date": last_splitevent_date,
+                    "last_split": last_splitevent_value,
+                }
+            last_row = pd.Series(new_data).append(last_row)
+
+            # Rename the series as the symbol
+            last_row = last_row.rename(symbol)
+
+            rows.append(last_row)
+
+        df = pd.DataFrame(rows)
+        df.index.names = ["ric_symbol"]
+        return df
+
     def stock_timeseries_daily__to_dividend_reinvested_scaled(self, dfs):
         """
         Calculates stock prices scaled by dividend-reinvestment.
