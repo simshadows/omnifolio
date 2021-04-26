@@ -34,6 +34,9 @@ from .utils import (
 
 _logger = logging.getLogger(__name__)
 
+
+_NUMPY_INT = np.longlong
+
 _PORTFOLIO_HISTORY_DEBUGGING__FILEPATH = "portfolio_history.json"
 
 class PortfolioTracker:
@@ -47,28 +50,28 @@ class PortfolioTracker:
 
         trade_history_iterable = get_trades(self._user_data_path)
 
-        portfolio_history = list(self._generate_portfolio_history(
+        self._portfolio_history = list(self._generate_portfolio_history(
                 trade_history_iterable,
             ))
-        self._dump_portfolio_history_debugging_file(portfolio_history, debugging_path=self._debugging_path)
+        self._dump_portfolio_history_debugging_file(self._portfolio_history, debugging_path=self._debugging_path)
 
         holdings_summary_dfs = self._generate_holdings_summary_dataframes(
-                portfolio_history,
+                self._portfolio_history,
             )
 
-        summary_df = self._make_holdings_summary_dataframe(
+        self._summary_df = self._make_holdings_summary_dataframe(
                 holdings_summary_dfs,
                 debugging_path=self._debugging_path,
             )
 
         if update_store:
-            summary_df_symbols = set(summary_df.columns.levels[1])
+            summary_df_symbols = set(self._summary_df.columns.levels[1])
             all_symbols = summary_df_symbols | set(benchmark_symbols)
             assert all(isinstance(x, str) for x in all_symbols)
             MarketDataAggregator().stock_timeseries_daily__update_store(all_symbols)
 
         portfolio_value_history_df = self._make_portfolio_value_history_dataframe(
-                summary_df,
+                self._summary_df,
                 debugging_path=self._debugging_path,
             )
 
@@ -82,6 +85,131 @@ class PortfolioTracker:
 
     def get_portfolio_stats_history(self):
         return deepcopy(self._portfolio_stats_history)
+
+    def get_current_state_summary(self, human_readable_strings=False, hide_closed_positions=True):
+
+        holdings = self._portfolio_history[-1]["global_averages"]["holdings"].get_holdings()["stocks"][""]
+        df = pd.DataFrame.from_dict(holdings, orient="index")
+
+        df2 = self._get_last_element_of_summary_df_as_unstacked()
+
+        assert (df.columns == pd.Index(["total_value",
+                                        "total_fees",
+                                        "unit_quantity"])).all()
+        assert (df2.columns == pd.MultiIndex.from_tuples([("cumulative", "total_fees_paid"),
+                                                          ("cumulative", "total_realized_capital_gain_before_fees"),
+                                                          ("stocks", "total_fees"),
+                                                          ("stocks", "total_value"),
+                                                          ("stocks", "unit_quantity")])).all()
+        assert set(df.index) <= set(df2.index)
+
+        # Change column labels
+        new_cols = pd.MultiIndex.from_tuples([
+            ("open_position", "total_price"),
+            ("open_position", "fees_included"),
+            ("open_position", "units"),
+        ])
+        df.columns = new_cols
+
+        # Merge in
+        df = df.merge(df2, how="outer", left_index=True, right_index=True)
+        df.loc[:,("open_position", "units")].fillna(value=_NUMPY_INT(0), inplace=True)
+        fill_values = df.loc[:,("cumulative", "total_realized_capital_gain_before_fees")].apply(lambda x : Currency(x.symbol, 0))
+        df.loc[:,("open_position", "total_price")].fillna(value=fill_values, inplace=True)
+        fill_values = df.loc[:,("cumulative", "total_fees_paid")].apply(lambda x : Currency(x.symbol, 0))
+        df.loc[:,("open_position", "fees_included")].fillna(value=fill_values, inplace=True)
+        df.index.names = ["symbol"]
+
+        # Run some data sanity checks
+        if (df.loc[:,("open_position", "units")] != df.loc[:,("stocks", "unit_quantity")]).any():
+            raise RuntimeError("Expected unit quantity columns to match.")
+        ## TODO: These doesn't work due to the use of 0 USD as a fill value. This should be fixed!
+        #if (df.loc[:,("open_position", "total_price")] != df.loc[:,("stocks", "total_value")]).any():
+        #    raise RuntimeError("Expected purchase value columns to match.")
+        #if (df.loc[:,("open_position", "fees_included")] > df.loc[:,("stocks", "total_fees")]).any():
+        #    raise RuntimeError("Expected purchase fee to be less or equal to total fees.")
+
+        # Remove unnecessary columns, and rename the remaining ones
+        cols_to_delete = [
+                ("stocks", "unit_quantity"),
+                ("stocks", "total_fees"),
+                ("stocks", "total_value"),
+            ]
+        df.drop(cols_to_delete, axis="columns", inplace=True)
+
+        # Add the fees into the total price since the original total_value doesn't include them
+        df.loc[:, ("open_position", "total_price")] += df.loc[:, ("open_position", "fees_included")]
+
+        # Repurpose some columns, and rename columns as needed
+        df.loc[:, ("cumulative", "total_fees_paid")] -= df.loc[:, ("open_position", "fees_included")]
+        df.loc[:, ("cumulative", "total_realized_capital_gain_before_fees")] -= df.loc[:, ("cumulative", "total_fees_paid")]
+        # TODO: Make this only rename what's needed rather than setting the entire index at once.
+        new_cols = pd.MultiIndex.from_tuples([
+            ("open_position", "total_price"),
+            ("open_position", "fees_included"),
+            ("open_position", "units"),
+            ("closed_position", "fees_included"),
+            ("closed_position", "realized_capital_gain"),
+        ])
+        df.columns = new_cols
+
+        # Reorder columns
+        new_column_order = [
+                ("open_position", "units"),
+                ("open_position", "total_price"),
+                ("open_position", "fees_included"),
+                ("closed_position", "realized_capital_gain"),
+                ("closed_position", "fees_included"),
+            ]
+        df = df[new_column_order]
+
+        if human_readable_strings:
+            # Sort
+            df.sort_index(axis="index", inplace=True)
+            #df.sort_values(by=[("open_position", "units"), "symbol"], axis="index", inplace=True)
+
+            # Move all closed positions to the end
+            all_open = df.loc[df.loc[:, ("open_position", "units")] != 0]
+            all_closed = df.loc[df.loc[:, ("open_position", "units")] == 0]
+            df = all_open.append(all_closed)
+
+            # Round numbers
+            cols_to_round = [
+                    ("open_position", "total_price"),
+                    ("open_position", "fees_included"),
+                    ("closed_position", "realized_capital_gain"),
+                    ("closed_position", "fees_included"),
+                ]
+            for col_name in cols_to_round:
+                df.loc[:, col_name] = df.loc[:, col_name].apply(lambda x : round(x, 3).rounded_str())
+        return df
+
+    def get_aggregate_summary(self):
+        # TODO
+        return "TO BE IMPLEMENTED"
+
+    ##########################
+    # Various helper methods #
+    ##########################
+
+    # TODO: Oh god, I really need to find better names for these things. "summary_df" is really bad.
+    def _get_last_element_of_summary_df_as_unstacked(self):
+        df = pd.DataFrame(self._summary_df.iloc[-1])
+
+        assert set(df.index.levels[0]) == {"cumulative", "stocks"}
+        assert set(df.index.levels[2]) == {"total_fees", "total_fees_paid", "total_realized_capital_gain_before_fees",
+                                           "total_value", "unit_quantity"}
+
+        df = df.unstack(level=0).unstack(level=1).droplevel(0, axis="columns")
+        cols_to_drop = [
+                ("cumulative", "total_fees"),
+                ("cumulative", "total_value"),
+                ("cumulative", "unit_quantity"),
+                ("stocks", "total_fees_paid"),
+                ("stocks", "total_realized_capital_gain_before_fees"),
+            ]
+        df.drop(cols_to_drop, axis="columns", inplace=True)
+        return df
 
     ##############################################
     # Portfolio history data processing pipeline #

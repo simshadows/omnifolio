@@ -159,6 +159,16 @@ class Currency:
         assert isinstance(new._value, Fraction)
         return new
 
+    def rounded_str(self, decimal_places=2):
+        """
+        Get a string with fixed decimal precision, including padding zeroes.
+        """
+        if not isinstance(decimal_places, int):
+            raise TypeError("decimal_places must be an int.")
+        if (decimal_places > 50) or (decimal_places < -50):
+            raise ValueError("decimal_places restricted to be between -10 and 10 for now, for security reasons.")
+        return f"{fraction_to_decimal(self._value):,.{decimal_places}f} {self._symbol}"
+
     def __hash__(self):
         return hash((self._value, self._symbol))
 
@@ -167,7 +177,7 @@ class Currency:
         return f"Currency('{s}', {repr(self._value)})"
 
     def __str__(self):
-        return f"{self._symbol} {fraction_to_decimal(self._value)}"
+        return f"{fraction_to_decimal(self._value):,} {self._symbol}"
 
     __lt__ = _binary_magic_comparison_op("__lt__")
     __le__ = _binary_magic_comparison_op("__le__")
