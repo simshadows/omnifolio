@@ -295,7 +295,7 @@ class MarketDataAggregator:
                     "last_split_date": last_splitevent_date,
                     "last_split": last_splitevent_value,
                 }
-            last_row = pd.Series(new_data).append(last_row)
+            last_row = pd.Series(new_data, dtype=object).append(last_row)
 
             # Rename the series as the symbol
             last_row = last_row.rename(symbol)

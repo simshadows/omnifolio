@@ -9,9 +9,11 @@ License:  GNU Affero General Public License v3 (AGPL-3.0)
 import os
 import logging
 import datetime
+from math import isnan
 from copy import copy, deepcopy
 from collections import defaultdict
 from fractions import Fraction
+from decimal import Decimal
 
 import numpy as np
 import pandas as pd
@@ -27,6 +29,7 @@ from .structs import (
     )
 from .utils import (
         fwrite_json,
+        fraction_to_decimal,
         create_json_writable_debugging_structure,
         pandas_add_column_level_above,
         dump_df_to_csv_debugging_file,
@@ -86,6 +89,7 @@ class PortfolioTracker:
     def get_portfolio_stats_history(self):
         return deepcopy(self._portfolio_stats_history)
 
+    # TODO: This function is so messy. Clean it up!
     def get_current_state_summary(self, human_readable_strings=False, hide_closed_positions=True):
 
         holdings = self._portfolio_history[-1]["global_averages"]["holdings"].get_holdings()["stocks"][""]
@@ -187,7 +191,7 @@ class PortfolioTracker:
                 ("open_position", "fees_included"),
                 ("open_position", "units"),
                 ("closed_position", "fees_included"),
-                ("closed_position", "realized_capital_gain"),
+                ("closed_position", "capital_gain"),
             ])
         df.columns = new_cols
 
@@ -197,17 +201,20 @@ class PortfolioTracker:
 
         # Add new column
         unrealized_capital_gain = df["open_position"]["total_mkt_value"] - df["open_position"]["total_price"]
-        df.insert(len(df.columns), ("open_position", "unrealized_capital_gain"), unrealized_capital_gain)
+        df.insert(len(df.columns), ("open_position", "capital_gain"), unrealized_capital_gain)
 
         # Add new column
-        net_gain = df["open_position"]["unrealized_capital_gain"] + df["closed_position"]["realized_capital_gain"]
+        net_gain = df["open_position"]["capital_gain"] + df["closed_position"]["capital_gain"]
         df.insert(len(df.columns), ("total", "net_gain"), net_gain)
 
         # Add stand-in column
-        df.insert(len(df.columns), ("closed_position", "dividend_gain"), NotImplemented)
+        df.insert(len(df.columns), ("open_position", "forex_gain"), "NotImpl.")
 
         # Add stand-in column
-        df.insert(len(df.columns), ("closed_position", "forex_gain"), NotImplemented)
+        df.insert(len(df.columns), ("closed_position", "dividend_gain"), "NotImpl.")
+
+        # Add stand-in column
+        df.insert(len(df.columns), ("closed_position", "forex_gain"), "NotImpl.")
 
         # Reorder columns
         new_column_order = [
@@ -221,8 +228,9 @@ class PortfolioTracker:
                 ("open_position", "total_price"),
                 ("open_position", "fees_included"),
                 ("open_position", "total_mkt_value"),
-                ("open_position", "unrealized_capital_gain"),
-                ("closed_position", "realized_capital_gain"),
+                ("open_position", "capital_gain"),
+                ("open_position", "forex_gain"),
+                ("closed_position", "capital_gain"),
                 ("closed_position", "dividend_gain"),
                 ("closed_position", "forex_gain"),
                 ("closed_position", "fees_included"),
@@ -240,23 +248,35 @@ class PortfolioTracker:
             all_closed = df.loc[df.loc[:, ("open_position", "units")] == 0]
             df = all_open.append(all_closed)
 
+            #
             # Round numbers
-            round_2dc_cols = [
+            #
+
+            currency_2dc_cols = [
                     ("open_position", "total_price"),
                     ("open_position", "fees_included"),
                     ("open_position", "total_mkt_value"),
-                    ("open_position", "unrealized_capital_gain"),
-                    ("closed_position", "realized_capital_gain"),
+                    ("open_position", "capital_gain"),
+                    ("closed_position", "capital_gain"),
                     ("closed_position", "fees_included"),
                     ("total", "net_gain"),
                 ]
-            round_3dc_cols = [
+            for col_name in currency_2dc_cols:
+                df.loc[:, col_name] = df.loc[:, col_name].apply(lambda x : x.rounded_str(decimal_places=2))
+
+            currency_3dc_cols = [
                     ("market_data", "unit_price"),
                 ]
-            for col_name in round_2dc_cols:
-                df.loc[:, col_name] = df.loc[:, col_name].apply(lambda x : x.rounded_str(decimal_places=2))
-            for col_name in round_3dc_cols:
+            for col_name in currency_3dc_cols:
                 df.loc[:, col_name] = df.loc[:, col_name].apply(lambda x : x.rounded_str(decimal_places=3))
+
+            numeric_5dc_cols = [
+                    ("market_data", "last_split"),
+                ]
+            op = lambda x : np.nan if isnan(x) else f"{fraction_to_decimal(x):,.5f}"
+            for col_name in numeric_5dc_cols:
+                df.loc[:, col_name] = df.loc[:, col_name].apply(op)
+
         return df
 
     def get_aggregate_summary(self):
