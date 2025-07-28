@@ -112,12 +112,19 @@ __metadata:
   languageName: node
   linkType: hard
 
+"omnifolio-cli@workspace:cli":
+  version: 0.0.0-use.local
+  resolution: "omnifolio-cli@workspace:cli"
+  dependencies:
+    omnifolio-core: "workspace:core"
+    ts-node: "npm:^10.9.2"
+    typescript: "npm:^5.8.3"
+  languageName: unknown
+  linkType: soft
+
 "omnifolio-core@workspace:core":
   version: 0.0.0-use.local
   resolution: "omnifolio-core@workspace:core"
-  dependencies:
-    ts-node: "npm:^10.9.2"
-    typescript: "npm:^5.8.3"
   languageName: unknown
   linkType: soft
 

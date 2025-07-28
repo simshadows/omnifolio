@@ -1,0 +1,15 @@
+{
+  "name": "omnifolio-cli",
+  "author": "simshadows <contact@simshadows.com>",
+  "version": "0.0.0-dev",
+  "description": "A CLI debugging tool for Omnifolio.",
+  "license": "AGPL-3.0-or-later",
+  "scripts": {
+    "runfoobar": "ts-node ./src/index.ts"
+  },
+  "dependencies": {
+    "omnifolio-core": "workspace:core",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  }
+}

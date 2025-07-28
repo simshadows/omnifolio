@@ -15,6 +15,10 @@ const RAW_RUNTIME_STATE =
       "reference": "workspace:."\
     },\
     {\
+      "name": "omnifolio-cli",\
+      "reference": "workspace:cli"\
+    },\
+    {\
       "name": "omnifolio-core",\
       "reference": "workspace:core"\
     }\
@@ -24,6 +28,7 @@ const RAW_RUNTIME_STATE =
   "pnpZipBackend": "libzip",\
   "fallbackExclusionList": [\
     ["omnifolio", ["workspace:."]],\
+    ["omnifolio-cli", ["workspace:cli"]],\
     ["omnifolio-core", ["workspace:core"]]\
   ],\
   "fallbackPool": [\
@@ -177,13 +182,23 @@ const RAW_RUNTIME_STATE =
         "linkType": "SOFT"\
       }]\
     ]],\
+    ["omnifolio-cli", [\
+      ["workspace:cli", {\
+        "packageLocation": "./cli/",\
+        "packageDependencies": [\
+          ["omnifolio-cli", "workspace:cli"],\
+          ["omnifolio-core", "workspace:core"],\
+          ["ts-node", "virtual:4627ed6ea0631f1433794ca9e1a3645803ec77c77518c4822e8b18e3db62647d0d1412141f427d39da231a3fb96358ae63fe05172a1a3213603f74da3e2cb1a4#npm:10.9.2"],\
+          ["typescript", "patch:typescript@npm%3A5.8.3#optional!builtin<compat/typescript>::version=5.8.3&hash=5786d5"]\
+        ],\
+        "linkType": "SOFT"\
+      }]\
+    ]],\
     ["omnifolio-core", [\
       ["workspace:core", {\
         "packageLocation": "./core/",\
         "packageDependencies": [\
-          ["omnifolio-core", "workspace:core"],\
-          ["ts-node", "virtual:4ddd4b1d505caf96c61bd5097d4f50a8c36dc79e372bf59de3e933bc3c323b7ec9973cb645763258eb8882dcc6cb477469703fd8cc12e839cec003a77b53df71#npm:10.9.2"],\
-          ["typescript", "patch:typescript@npm%3A5.8.3#optional!builtin<compat/typescript>::version=5.8.3&hash=5786d5"]\
+          ["omnifolio-core", "workspace:core"]\
         ],\
         "linkType": "SOFT"\
       }]\
@@ -196,8 +211,8 @@ const RAW_RUNTIME_STATE =
         ],\
         "linkType": "SOFT"\
       }],\
-      ["virtual:4ddd4b1d505caf96c61bd5097d4f50a8c36dc79e372bf59de3e933bc3c323b7ec9973cb645763258eb8882dcc6cb477469703fd8cc12e839cec003a77b53df71#npm:10.9.2", {\
-        "packageLocation": "./.yarn/__virtual__/ts-node-virtual-4c5ac2d9a9/0/cache/ts-node-npm-10.9.2-3f3890b9ac-5f29938489.zip/node_modules/ts-node/",\
+      ["virtual:4627ed6ea0631f1433794ca9e1a3645803ec77c77518c4822e8b18e3db62647d0d1412141f427d39da231a3fb96358ae63fe05172a1a3213603f74da3e2cb1a4#npm:10.9.2", {\
+        "packageLocation": "./.yarn/__virtual__/ts-node-virtual-c1ac1c0aae/0/cache/ts-node-npm-10.9.2-3f3890b9ac-5f29938489.zip/node_modules/ts-node/",\
         "packageDependencies": [\
           ["@cspotcode/source-map-support", "npm:0.8.1"],\
           ["@swc/core", null],\
@@ -216,7 +231,7 @@ const RAW_RUNTIME_STATE =
           ["create-require", "npm:1.1.1"],\
           ["diff", "npm:4.0.2"],\
           ["make-error", "npm:1.3.6"],\
-          ["ts-node", "virtual:4ddd4b1d505caf96c61bd5097d4f50a8c36dc79e372bf59de3e933bc3c323b7ec9973cb645763258eb8882dcc6cb477469703fd8cc12e839cec003a77b53df71#npm:10.9.2"],\
+          ["ts-node", "virtual:4627ed6ea0631f1433794ca9e1a3645803ec77c77518c4822e8b18e3db62647d0d1412141f427d39da231a3fb96358ae63fe05172a1a3213603f74da3e2cb1a4#npm:10.9.2"],\
           ["typescript", "patch:typescript@npm%3A5.8.3#optional!builtin<compat/typescript>::version=5.8.3&hash=5786d5"],\
           ["v8-compile-cache-lib", "npm:3.0.1"],\
           ["yn", "npm:3.1.1"]\

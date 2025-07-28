@@ -13,9 +13,10 @@
   },
   "packageManager": "yarn@4.9.2",
   "scripts": {
-    "runbarbaz": "yarn workspace omnifolio-core run runfoobar"
+    "runbarbaz": "yarn workspace omnifolio-cli run runfoobar"
   },
   "workspaces": [
+    "cli",
     "core"
   ]
 }
