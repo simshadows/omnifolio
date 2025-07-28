@@ -1,4 +1,21 @@
 {
   "name": "omnifolio",
-  "packageManager": "yarn@4.9.2"
+  "author": "simshadows <contact@simshadows.com>",
+  "version": "0.0.0-dev",
+  "description": "My crude amateur personal finance tool that I use for my own purposes.",
+  "license": "AGPL-3.0-or-later",
+  "keywords": [
+    "finance"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/simshadows/omnifolio"
+  },
+  "packageManager": "yarn@4.9.2",
+  "scripts": {
+    "runbarbaz": "yarn workspace omnifolio-core run runfoobar"
+  },
+  "workspaces": [
+    "core"
+  ]
 }

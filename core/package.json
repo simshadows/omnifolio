@@ -1,0 +1,10 @@
+{
+  "name": "omnifolio-core",
+  "author": "simshadows <contact@simshadows.com>",
+  "version": "0.0.0-dev",
+  "description": "Omnifolio's core library for digesting and analyzing financial data.",
+  "license": "AGPL-3.0-or-later",
+  "scripts": {
+    "runfoobar": "node foobar.js"
+  }
+}

@@ -5,6 +5,12 @@ __metadata:
   version: 8
   cacheKey: 10c0
 
+"omnifolio-core@workspace:core":
+  version: 0.0.0-use.local
+  resolution: "omnifolio-core@workspace:core"
+  languageName: unknown
+  linkType: soft
+
 "omnifolio@workspace:.":
   version: 0.0.0-use.local
   resolution: "omnifolio@workspace:."
