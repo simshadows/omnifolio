@@ -1,0 +1,24 @@
+{
+    "compilerOptions": {
+        "strict": true,
+        "allowUnreachableCode": false,
+        "allowUnusedLabels": false,
+        "exactOptionalPropertyTypes": true,
+        "noFallthroughCasesInSwitch": false,
+        "noImplicitAny": true,
+        "noImplicitOverride": true,
+        "noImplicitReturns": true,
+        "noPropertyAccessFromIndexSignature": true,
+        "noUncheckedIndexedAccess": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+
+        "allowJs": true,
+        "jsx": "react",
+        "module": "nodenext",
+        "target": "es5",
+        "esModuleInterop": true,
+        "moduleResolution": "nodenext",
+        "allowSyntheticDefaultImports": true
+    }
+}
