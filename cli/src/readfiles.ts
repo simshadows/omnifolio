@@ -12,15 +12,26 @@ import {open, readdir} from "node:fs/promises";
 import {join} from 'node:path';
 
 import {
-    type OmnifolioBundle,
+    type TimeseriesEntry,
     type SingleAssetMarketData,
+    type OmnifolioBundle,
 } from "omnifolio-core";
 
 import {jsonParse} from "./danger";
 
 const ENCODING = "utf8";
 
-export async function readAccounts(path: string): Promise<void> {
+
+function csvParse(raw: string): string[][] {
+    const lines = raw.trim().split("\n");
+    return lines.map(s => s.trim().split(",").map(s2 => s2.trim()));
+}
+
+
+/*** ***/
+
+
+async function readAccounts(path: string): Promise<void> {
     path;
     // TODO
 }
@@ -29,7 +40,32 @@ export async function readAccounts(path: string): Promise<void> {
 /*** ***/
 
 
-export async function readMarketData(root: string): Promise<SingleAssetMarketData> {
+function parseTimeseries(raw: string): TimeseriesEntry[] {
+    const unsorted: TimeseriesEntry[] = csvParse(raw).map(line => {
+        const date = line[0];
+        if (!date) {
+            throw new Error("Blank date is not allowed.");
+        }
+
+        const valueStr = line[1];
+        if (!valueStr) {
+            throw new Error("Blank date is not allowed.");
+        }
+        const value = Number(valueStr);
+
+        return {
+            date,
+            value,
+        };
+    });
+
+    //const sorted = unsorted.sort((a, b) => a.date.localeCompare(b.date));
+    //return sorted;
+    return unsorted;
+}
+
+
+async function readMarketData(root: string): Promise<SingleAssetMarketData> {
     const path1 = join(root, "config.json");
     const f1 = await open(path1, "r");
     const raw1: string = await f1.readFile({encoding: ENCODING});
@@ -43,16 +79,22 @@ export async function readMarketData(root: string): Promise<SingleAssetMarketDat
     }
     const id = obj1.id;
 
+    const path2 = join(root, "timeseries.csv");
+    const f2 = await open(path2, "r");
+    const raw2: string = await f2.readFile({encoding: ENCODING});
+
+    const timeseriesDaily = parseTimeseries(raw2);
+
     return {
-        id: id,
-        timeseriesDaily: new Map(),
+        id,
+        timeseriesDaily,
         metadata: {
             directory: root,
         },
     };
 }
 
-export async function readMarketDataRoot(root: string): Promise<Map<string, SingleAssetMarketData>> {
+async function readMarketDataRoot(root: string): Promise<Map<string, SingleAssetMarketData>> {
     const m: Map<string, SingleAssetMarketData> = new Map();
 
     const dirContents = await readdir(root, {withFileTypes: true});
@@ -76,7 +118,7 @@ export async function readMarketDataRoot(root: string): Promise<Map<string, Sing
 /*** ***/
 
 
-export async function readOmnifolio(path: string): Promise<void> {
+async function readOmnifolio(path: string): Promise<void> {
     const f = await open(path, "r");
     const raw: string = await f.readFile({encoding: ENCODING});
 
