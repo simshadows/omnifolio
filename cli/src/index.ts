@@ -1,6 +1,6 @@
 import {argv} from 'node:process';
 
-import {debug} from "omnifolio-core";
+import {readBundle} from "omnifolio-core";
 
 import {readFiles} from "./readfiles";
 
@@ -19,13 +19,7 @@ async function run() {
         throw new Error("Expected non-empty root path string.");
     }
 
-    console.log(`Root: ${rootPath}`);
-    console.log();
-
-    await readFiles(rootPath);
-
-    debug();
-    console.log("Exiting.");
+    readBundle(await readFiles(rootPath));
 }
 
 run();

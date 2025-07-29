@@ -17,6 +17,7 @@
         "jsx": "react",
         "module": "nodenext",
         "target": "es5",
+        "lib": ["ES2023", "dom"],
         "esModuleInterop": true,
         "moduleResolution": "nodenext",
         "allowSyntheticDefaultImports": true
