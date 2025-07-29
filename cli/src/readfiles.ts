@@ -12,12 +12,14 @@ import {open, readdir} from "node:fs/promises";
 import {join} from 'node:path';
 
 import {
+    type Account,
     type TimeseriesEntry,
+    type MarketEvent,
     type SingleAssetMarketData,
     type OmnifolioBundle,
 } from "omnifolio-core";
 
-import {jsonParse} from "./danger";
+import {jsonParse, isObjArray} from "./danger";
 
 const ENCODING = "utf8";
 
@@ -31,9 +33,10 @@ function csvParse(raw: string): string[][] {
 /*** ***/
 
 
-async function readAccounts(path: string): Promise<void> {
+async function readAccounts(path: string): Promise<Map<string, Account>> {
     path;
     // TODO
+    return new Map();
 }
 
 
@@ -65,6 +68,34 @@ function parseTimeseries(raw: string): TimeseriesEntry[] {
 }
 
 
+async function readMarketEvents(path: string): Promise<MarketEvent[]> {
+    const raw = await (async ()=>{
+        try {
+            const f = await open(path, "r");
+            return await f.readFile({encoding: ENCODING});
+        } catch {
+            return null;
+        }
+    })();
+    if (!raw) return []; // No events
+
+    const obj: unknown = jsonParse(raw);
+    if (!isObjArray(obj)) {
+        throw new Error(`${path} root must be an array.`);
+    }
+
+    return obj.map(event => {
+        if (!("date" in event && typeof event.date === "string")) {
+            throw new Error(`${path} date must be a string.`);
+        }
+        const date = event.date;
+        return {
+            date,
+        };
+    });
+}
+
+
 async function readMarketData(root: string): Promise<SingleAssetMarketData> {
     const path1 = join(root, "config.json");
     const f1 = await open(path1, "r");
@@ -88,6 +119,7 @@ async function readMarketData(root: string): Promise<SingleAssetMarketData> {
     return {
         id,
         timeseriesDaily,
+        events: await readMarketEvents(join(root, "events.json")),
         metadata: {
             directory: root,
         },
@@ -140,8 +172,8 @@ async function readOmnifolio(path: string): Promise<void> {
 
 export async function readFiles(root: string): Promise<OmnifolioBundle> {
     await readOmnifolio(join(root, "omnifolio.json"));
-    await readAccounts(join(root, "accounts"));
     return {
+        accounts: await readAccounts(join(root, "accounts")),
         marketData: await readMarketDataRoot(join(root, "market-data")),
     }
 }
