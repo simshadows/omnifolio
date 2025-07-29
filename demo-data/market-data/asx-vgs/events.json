@@ -1,0 +1,12 @@
+[
+    {
+        "date": "2020-10-01",
+        "type": "ex-distribution",
+        "valuePerUnit": 0.345002
+    },
+    {
+        "date": "2021-01-04",
+        "type": "ex-distribution",
+        "valuePerUnit": 0.403359
+    }
+]

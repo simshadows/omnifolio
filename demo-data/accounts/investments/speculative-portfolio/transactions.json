@@ -1,0 +1,10 @@
+[
+    {
+        "date": "2022-12-07",
+        "type": "buy",
+        "asset": "ASX:NDQ",
+        "qty": 40,
+        "pricePerUnit": 26.80,
+        "brokerage": 10
+    }
+]

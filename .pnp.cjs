@@ -118,6 +118,16 @@ const RAW_RUNTIME_STATE =
         "linkType": "HARD"\
       }]\
     ]],\
+    ["@types/node", [\
+      ["npm:24.1.0", {\
+        "packageLocation": "./.yarn/cache/@types-node-npm-24.1.0-b409136c60-6c4686bc14.zip/node_modules/@types/node/",\
+        "packageDependencies": [\
+          ["@types/node", "npm:24.1.0"],\
+          ["undici-types", "npm:7.8.0"]\
+        ],\
+        "linkType": "HARD"\
+      }]\
+    ]],\
     ["acorn", [\
       ["npm:8.15.0", {\
         "packageLocation": "./.yarn/cache/acorn-npm-8.15.0-0764cf600e-dec73ff59b.zip/node_modules/acorn/",\
@@ -186,6 +196,7 @@ const RAW_RUNTIME_STATE =
       ["workspace:cli", {\
         "packageLocation": "./cli/",\
         "packageDependencies": [\
+          ["@types/node", "npm:24.1.0"],\
           ["omnifolio-cli", "workspace:cli"],\
           ["omnifolio-core", "workspace:core"],\
           ["ts-node", "virtual:4627ed6ea0631f1433794ca9e1a3645803ec77c77518c4822e8b18e3db62647d0d1412141f427d39da231a3fb96358ae63fe05172a1a3213603f74da3e2cb1a4#npm:10.9.2"],\
@@ -221,7 +232,7 @@ const RAW_RUNTIME_STATE =
           ["@tsconfig/node12", "npm:1.0.11"],\
           ["@tsconfig/node14", "npm:1.0.3"],\
           ["@tsconfig/node16", "npm:1.0.4"],\
-          ["@types/node", null],\
+          ["@types/node", "npm:24.1.0"],\
           ["@types/swc__core", null],\
           ["@types/swc__wasm", null],\
           ["@types/typescript", null],\
@@ -253,6 +264,15 @@ const RAW_RUNTIME_STATE =
         "packageLocation": "./.yarn/cache/typescript-patch-f64146f279-39117e346f.zip/node_modules/typescript/",\
         "packageDependencies": [\
           ["typescript", "patch:typescript@npm%3A5.8.3#optional!builtin<compat/typescript>::version=5.8.3&hash=5786d5"]\
+        ],\
+        "linkType": "HARD"\
+      }]\
+    ]],\
+    ["undici-types", [\
+      ["npm:7.8.0", {\
+        "packageLocation": "./.yarn/cache/undici-types-npm-7.8.0-86f3e2d23e-9d9d246d1d.zip/node_modules/undici-types/",\
+        "packageDependencies": [\
+          ["undici-types", "npm:7.8.0"]\
         ],\
         "linkType": "HARD"\
       }]\

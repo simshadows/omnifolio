@@ -1,3 +1,3 @@
-export function foobar() {
-    return "hello world";
+export function debug() {
+    console.log(`Running debug()`);
 }

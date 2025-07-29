@@ -1,0 +1,26 @@
+[
+    {
+        "date": "2020-07-14",
+        "type": "buy",
+        "asset": "ASX:VGS",
+        "qty": 60,
+        "pricePerUnit": 77.621,
+        "brokerage": 9.95
+    },
+    {
+        "date": "2020-08-21",
+        "type": "buy",
+        "asset": "ASX:VAS",
+        "qty": 20,
+        "pricePerUnit": 77.70,
+        "brokerage": 3
+    },
+    {
+        "date": "2025-02-26",
+        "type": "sell",
+        "asset": "ASX:VGS",
+        "qty": 10,
+        "pricePerUnit": 141.1,
+        "brokerage": 2
+    }
+]

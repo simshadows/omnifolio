@@ -5,9 +5,10 @@
   "description": "A CLI debugging tool for Omnifolio.",
   "license": "AGPL-3.0-or-later",
   "scripts": {
-    "runfoobar": "ts-node ./src/index.ts"
+    "debug": "ts-node ./src/index.ts"
   },
   "dependencies": {
+    "@types/node": "^24.1.0",
     "omnifolio-core": "workspace:core",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
