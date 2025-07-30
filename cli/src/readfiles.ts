@@ -22,6 +22,8 @@ import {
     readCsvFile,
     readJsonObjectFile,
     readJsonArrayFile,
+
+    objGetStr,
 } from "omnifolio-utils";
 
 
@@ -40,15 +42,8 @@ async function tryReadAccountNode(path: string): Promise<Account | null> {
     const path1 = join(path, NAME1);
     const obj1 = await readJsonObjectFile(path1);
 
-    if (!("id" in obj1 && typeof obj1.id === "string")) {
-        throw new Error(`${path1}: id must be a string.`);
-    }
-    const id = obj1.id;
-
-    if (!("name" in obj1 && typeof obj1.name === "string")) {
-        throw new Error(`${path1}: name must be a string.`);
-    }
-    const name = obj1.name;
+    const id = objGetStr(obj1, "id", path1);
+    const name = objGetStr(obj1, "name", path1);
 
     const transactions = await (async ()=>{
         const NAME2 = "transactions.json";
@@ -61,11 +56,7 @@ async function tryReadAccountNode(path: string): Promise<Account | null> {
                 throw new Error(`${path2} array elements must be an objects.`);
             }
 
-            if (!("date" in t && typeof t.date === "string")) {
-                throw new Error(`Expected a string.`);
-            }
-            const date = t.date;
-            
+            const date = objGetStr(t, "date", path2);
             return {
                 date,
             };
@@ -106,16 +97,18 @@ async function readAccounts(path: string): Promise<Map<string, Account>> {
 /*** ***/
 
 
-function parseTimeseries(csvData: string[][]): TimeseriesEntry[] {
+async function readTimeseriesFile(path: string): Promise<TimeseriesEntry[]> {
+    const csvData = await readCsvFile(path);
+
     const unsorted: TimeseriesEntry[] = csvData.map(line => {
         const date = line[0];
         if (!date) {
-            throw new Error("Blank date is not allowed.");
+            throw new Error(`Blank date (column 1) is not allowed. ${path}`);
         }
 
         const valueStr = line[1];
         if (!valueStr) {
-            throw new Error("Blank date is not allowed.");
+            throw new Error(`Blank value (column 2) is not allowed. ${path}`);
         }
         const value = Number(valueStr);
 
@@ -169,9 +162,7 @@ async function readMarketData(root: string): Promise<SingleAssetMarketData> {
     const id = obj1.id;
 
     const path2 = join(root, "timeseries.csv");
-    const csvData = await readCsvFile(path2);
-
-    const timeseriesDaily = parseTimeseries(csvData);
+    const timeseriesDaily = await readTimeseriesFile(path2);
 
     return {
         id,
