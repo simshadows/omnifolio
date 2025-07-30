@@ -107,6 +107,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"dayjs@npm:^1.11.13":
+  version: 1.11.13
+  resolution: "dayjs@npm:1.11.13"
+  checksum: 10c0/a3caf6ac8363c7dade9d1ee797848ddcf25c1ace68d9fe8678ecf8ba0675825430de5d793672ec87b24a69bf04a1544b176547b2539982275d5542a7955f35b7
+  languageName: node
+  linkType: hard
+
 "diff@npm:^4.0.1":
   version: 4.0.2
   resolution: "diff@npm:4.0.2"
@@ -136,12 +143,16 @@ __metadata:
 "omnifolio-core@workspace:core":
   version: 0.0.0-use.local
   resolution: "omnifolio-core@workspace:core"
+  dependencies:
+    omnifolio-utils: "workspace:utils"
   languageName: unknown
   linkType: soft
 
 "omnifolio-utils@workspace:utils":
   version: 0.0.0-use.local
   resolution: "omnifolio-utils@workspace:utils"
+  dependencies:
+    dayjs: "npm:^1.11.13"
   languageName: unknown
   linkType: soft
 

@@ -19,12 +19,15 @@ import {
 } from "omnifolio-core";
 
 import {
+    TimezonelessDate,
+
     readCsvFile,
     readJsonObjectFile,
     readJsonArrayFile,
 
     objGetStr,
     objGetNum,
+    objGetDate,
 } from "omnifolio-utils";
 
 
@@ -33,7 +36,7 @@ function readTransaction(obj: unknown, path: string): Transaction {
         throw new Error(`Array elements must be objects. ${path}`);
     }
 
-    const date = objGetStr(obj, "date", path);
+    const date = objGetDate(obj, "date", path);
     const transactionType = objGetStr(obj, "type", path);
     if (!(transactionType === "buy" || transactionType === "sell")) {
         throw new Error(`Invalid transaction type '${transactionType}'. ${path}`);
@@ -135,7 +138,7 @@ async function readTimeseriesFile(path: string): Promise<TimeseriesEntry[]> {
         const value = Number(valueStr);
 
         return {
-            date,
+            date: TimezonelessDate.parseISODate(date),
             value,
         };
     });
@@ -152,7 +155,7 @@ function readMarketEvent(obj: unknown, path: string): MarketEvent {
         throw new Error(`Array elements must be objects. ${path}`);
     }
 
-    const date = objGetStr(obj, "date", path);
+    const date = objGetDate(obj, "date", path);
     const eventType = objGetStr(obj, "type", path);
     if (eventType !== "ex-distribution") {
         throw new Error(`Invalid event type '${eventType}'. ${path}`);

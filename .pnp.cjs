@@ -170,6 +170,15 @@ const RAW_RUNTIME_STATE =
         "linkType": "HARD"\
       }]\
     ]],\
+    ["dayjs", [\
+      ["npm:1.11.13", {\
+        "packageLocation": "./.yarn/cache/dayjs-npm-1.11.13-d478bb9479-a3caf6ac83.zip/node_modules/dayjs/",\
+        "packageDependencies": [\
+          ["dayjs", "npm:1.11.13"]\
+        ],\
+        "linkType": "HARD"\
+      }]\
+    ]],\
     ["diff", [\
       ["npm:4.0.2", {\
         "packageLocation": "./.yarn/cache/diff-npm-4.0.2-73133c7102-81b91f9d39.zip/node_modules/diff/",\
@@ -215,7 +224,8 @@ const RAW_RUNTIME_STATE =
       ["workspace:core", {\
         "packageLocation": "./core/",\
         "packageDependencies": [\
-          ["omnifolio-core", "workspace:core"]\
+          ["omnifolio-core", "workspace:core"],\
+          ["omnifolio-utils", "workspace:utils"]\
         ],\
         "linkType": "SOFT"\
       }]\
@@ -224,6 +234,7 @@ const RAW_RUNTIME_STATE =
       ["workspace:utils", {\
         "packageLocation": "./utils/",\
         "packageDependencies": [\
+          ["dayjs", "npm:1.11.13"],\
           ["omnifolio-utils", "workspace:utils"]\
         ],\
         "linkType": "SOFT"\

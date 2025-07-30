@@ -5,11 +5,10 @@
  * The core types of omnifolio-core
  */
 
-interface BaseTransaction {
-    // TODO we should probably change this to a proper type
-    date: string;
+import {TimezonelessDate} from "omnifolio-utils";
 
-    // TODO: How to differentiate between transactions?
+interface BaseTransaction {
+    date: TimezonelessDate;
 }
 interface BuySellTransaction extends BaseTransaction {
     asset: string;
@@ -34,18 +33,14 @@ export interface Account {
 /*** ***/
 
 export interface TimeseriesEntry {
-    // TODO we should probably change this to a proper type
-    date: string;
+    date: TimezonelessDate;
 
     // TODO change to a wrapper class?
     value: number;
 };
 
 interface BaseMarketEvent {
-    // TODO we should probably change this to a proper type
-    date: string;
-
-    // TODO: How to differentiate between events?
+    date: TimezonelessDate;
 }
 export interface ExDistributionEvent extends BaseMarketEvent {
     type: "ex-distribution";

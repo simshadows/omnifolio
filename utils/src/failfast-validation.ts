@@ -10,6 +10,7 @@
  */
 
 import {getAttribute} from "./danger-tech-debt";
+import {TimezonelessDate} from "./timezoneless-date";
 
 export function objGetStr(obj: unknown, k: string, errMsg: string = ""): string {
     errMsg = errMsg ? ` ${errMsg}` : "";
@@ -61,4 +62,9 @@ export function objGetNum(obj: unknown, k: string, errMsg: string = ""): number 
 //    }
 //    return v;
 //}
+
+export function objGetDate(obj: unknown, k: string, errMsg: string = ""): TimezonelessDate {
+    const v = objGetStr(obj, k, errMsg);
+    return TimezonelessDate.parseISODate(v);
+}
 
