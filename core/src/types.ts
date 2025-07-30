@@ -14,6 +14,7 @@ export interface Transaction {
 
 export interface Account {
     id: string;
+    name: string;
     transactions: Transaction[];
 }
 
@@ -43,6 +44,9 @@ export interface SingleAssetMarketData {
     // Omnifolio will also validate for duplicates.
     timeseriesDaily: TimeseriesEntry[];
 
+    // Events don't need to be in sorted order.
+    // Omnifolio will sort it itself.
+    // Omnifolio will also validate for duplicates.
     events: MarketEvent[];
 
     // Some optional metadata that can help with debugging

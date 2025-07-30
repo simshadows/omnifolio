@@ -23,6 +23,15 @@ import {jsonParse, isObjArray} from "./danger";
 
 const ENCODING = "utf8";
 
+async function readTextFile(path: string): Promise<string> {
+    let f;
+    try {
+        f = await open(path, "r");
+        return await f.readFile({encoding: ENCODING});
+    } finally {
+        await f?.close();
+    }
+}
 
 function csvParse(raw: string): string[][] {
     const lines = raw.trim().split("\n");
@@ -33,10 +42,89 @@ function csvParse(raw: string): string[][] {
 /*** ***/
 
 
+/*
+ * This function intentionally does not fail gracefully if dirContents
+ * contains a file, but actually opening the file fails.
+ */
+async function tryReadAccountNode(path: string): Promise<Account | null> {
+    const dirContents = new Map(
+        (await readdir(path, {withFileTypes: true}))
+            .map(x => [x.name, x])
+    );
+
+    const NAME1 = "config.json";
+    if (!dirContents.has(NAME1)) return null;
+    const path1 = join(path, NAME1);
+    const raw1 = await readTextFile(path1);
+    const obj1: unknown = jsonParse(raw1);
+    if (!obj1 || typeof obj1 !== "object" || Array.isArray(obj1)) {
+        throw new Error(`${path1} root must be an object.`);
+    }
+
+    if (!("id" in obj1 && typeof obj1.id === "string")) {
+        throw new Error(`${path1}: id must be a string.`);
+    }
+    const id = obj1.id;
+
+    if (!("name" in obj1 && typeof obj1.name === "string")) {
+        throw new Error(`${path1}: name must be a string.`);
+    }
+    const name = obj1.name;
+
+    const transactions = await (async ()=>{
+        const NAME2 = "transactions.json";
+        if (!dirContents.has(NAME2)) return [];
+        const path2 = join(path, NAME2);
+        const raw2 = await readTextFile(path2);
+        const arr2: unknown = jsonParse(raw2);
+        if (!arr2 || typeof arr2 !== "object" || !Array.isArray(arr2)) {
+            throw new Error(`${path2} root must be an array.`);
+        }
+
+        return arr2.map(t => {
+            if (!t || typeof t !== "object" || Array.isArray(t)) {
+                throw new Error(`${path2} array elements must be an objects.`);
+            }
+
+            if (!("date" in t && typeof t.date === "string")) {
+                throw new Error(`Expected a string.`);
+            }
+            const date = t.date;
+            
+            return {
+                date,
+            };
+        });
+    })();
+
+    return {
+        id,
+        name,
+        transactions: transactions,
+    };
+}
+
 async function readAccounts(path: string): Promise<Map<string, Account>> {
-    path;
-    // TODO
-    return new Map();
+    const m: Map<string, Account> = new Map();
+
+    const nodeAccount = await tryReadAccountNode(path);
+    if (nodeAccount) {
+        m.set(nodeAccount.id, nodeAccount);
+    }
+
+    const dirContents = await readdir(path, {withFileTypes: true});
+    for (const dirent of dirContents) {
+        if (!dirent.isDirectory()) continue;
+        const path2 = join(path, dirent.name);
+        const moreAccounts = await readAccounts(path2);
+        for (const [id, account] of moreAccounts) {
+            if (m.has(id)) {
+                throw new Error(`Duplicate account ID '${id}' at ${path2}`);
+            }
+            m.set(id, account);
+        }
+    }
+    return m;
 }
 
 
@@ -62,6 +150,8 @@ function parseTimeseries(raw: string): TimeseriesEntry[] {
         };
     });
 
+    // TODO: Throw an error if it's out of order.
+
     //const sorted = unsorted.sort((a, b) => a.date.localeCompare(b.date));
     //return sorted;
     return unsorted;
@@ -71,8 +161,7 @@ function parseTimeseries(raw: string): TimeseriesEntry[] {
 async function readMarketEvents(path: string): Promise<MarketEvent[]> {
     const raw = await (async ()=>{
         try {
-            const f = await open(path, "r");
-            return await f.readFile({encoding: ENCODING});
+            return await readTextFile(path);
         } catch {
             return null;
         }
@@ -98,8 +187,7 @@ async function readMarketEvents(path: string): Promise<MarketEvent[]> {
 
 async function readMarketData(root: string): Promise<SingleAssetMarketData> {
     const path1 = join(root, "config.json");
-    const f1 = await open(path1, "r");
-    const raw1: string = await f1.readFile({encoding: ENCODING});
+    const raw1 = await readTextFile(path1);
     const obj1: unknown = jsonParse(raw1);
     if (!obj1 || typeof obj1 !== "object" || Array.isArray(obj1)) {
         throw new Error(`${path1} root must be an object.`);
@@ -111,8 +199,7 @@ async function readMarketData(root: string): Promise<SingleAssetMarketData> {
     const id = obj1.id;
 
     const path2 = join(root, "timeseries.csv");
-    const f2 = await open(path2, "r");
-    const raw2: string = await f2.readFile({encoding: ENCODING});
+    const raw2 = await readTextFile(path2);
 
     const timeseriesDaily = parseTimeseries(raw2);
 
@@ -151,8 +238,7 @@ async function readMarketDataRoot(root: string): Promise<Map<string, SingleAsset
 
 
 async function readOmnifolio(path: string): Promise<void> {
-    const f = await open(path, "r");
-    const raw: string = await f.readFile({encoding: ENCODING});
+    const raw = await readTextFile(path);
 
     const obj: unknown = jsonParse(raw);
 
