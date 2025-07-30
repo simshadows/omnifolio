@@ -32,23 +32,32 @@ export function objGetStr(obj: unknown, k: string, errMsg: string = ""): string 
     return v;
 }
 
-//export function objGetNumber(obj: unknown, k: string, errMsg: string = ""): number {
-//    errMsg = errMsg ? ` ${errMsg}` : "";
+export function objGetNum(obj: unknown, k: string, errMsg: string = ""): number {
+    errMsg = errMsg ? ` ${errMsg}` : "";
+
+    const v = (()=>{
+        try {
+            return getAttribute(obj, k);
+        } catch (e) {
+            if (e instanceof Error) {
+                throw new Error(`${e.message}${errMsg}`);
+            } else {
+                throw e;
+            }
+        }
+    })();
+
+    if (typeof v !== "number") {
+        throw new Error(`Failed to read object. Key '${k}' must have a number value.${errMsg}`);
+    }
+    return v;
+}
+
+//export function objGetInt(obj: unknown, k: string, errMsg: string = ""): number {
+//    const v = objGetNum(obj, k, errMsg);
 //
-//    const v = (()=>{
-//        try {
-//            return getAttribute(obj, k);
-//        } catch (e) {
-//            if (e instanceof Error) {
-//                throw new Error(`${e.message}${errMsg}`);
-//            } else {
-//                throw e;
-//            }
-//        }
-//    })();
-//
-//    if (typeof v !== "number") {
-//        throw new Error(`Failed to read object. Key '${k}' must have a number value.${errMsg}`);
+//    if (!Number.isSafeInteger(v)) {
+//        throw new Error(`Failed to read object. Key '${k}' must have a safe integer value.${errMsg}`);
 //    }
 //    return v;
 //}

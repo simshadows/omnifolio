@@ -1,4 +1,4 @@
-import {type OmnifolioBundle} from './types';
+import {type OmnifolioBundle} from './public-types';
 
 export function readBundle(x: OmnifolioBundle) {
     console.log();

@@ -1,2 +1,2 @@
-export * from './types';
+export * from './public-types';
 export * from './read-bundle';

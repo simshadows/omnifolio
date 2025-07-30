@@ -24,11 +24,11 @@ export const jsonStringify = (x: unknown): string => JSON.stringify(x);
 export function isUnknownArray(obj: unknown): obj is unknown[] {
     return Array.isArray(obj);
 }
-export function isObjArray(obj: unknown): obj is object[] {
-    if (!Array.isArray(obj)) return false;
-    for (const v of obj) {
-        if (typeof v !== "object") return false;
-    }
-    return true;
-}
+//export function isObjArray(obj: unknown): obj is object[] {
+//    if (!Array.isArray(obj)) return false;
+//    for (const v of obj) {
+//        if (typeof v !== "object") return false;
+//    }
+//    return true;
+//}
 

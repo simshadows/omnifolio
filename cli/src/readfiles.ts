@@ -10,6 +10,7 @@ import {readdir} from "node:fs/promises";
 import {join} from 'node:path';
 
 import {
+    type Transaction,
     type Account,
     type TimeseriesEntry,
     type MarketEvent,
@@ -18,14 +19,39 @@ import {
 } from "omnifolio-core";
 
 import {
-    isObjArray,
     readCsvFile,
     readJsonObjectFile,
     readJsonArrayFile,
 
     objGetStr,
+    objGetNum,
 } from "omnifolio-utils";
 
+
+function readTransaction(obj: unknown, path: string): Transaction {
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) {
+        throw new Error(`Array elements must be objects. ${path}`);
+    }
+
+    const date = objGetStr(obj, "date", path);
+    const transactionType = objGetStr(obj, "type", path);
+    if (!(transactionType === "buy" || transactionType === "sell")) {
+        throw new Error(`Invalid transaction type '${transactionType}'. ${path}`);
+    }
+    const asset = objGetStr(obj, "asset", path);
+    const qty = objGetNum(obj, "qty", path);
+    const pricePerUnit = objGetNum(obj, "pricePerUnit", path);
+    const brokerage = objGetNum(obj, "brokerage", path);
+
+    return {
+        date,
+        type: transactionType,
+        asset,
+        qty,
+        pricePerUnit,
+        brokerage,
+    };
+}
 
 /*
  * This function intentionally does not fail gracefully if dirContents
@@ -45,22 +71,18 @@ async function tryReadAccountNode(path: string): Promise<Account | null> {
     const id = objGetStr(obj1, "id", path1);
     const name = objGetStr(obj1, "name", path1);
 
+    const currency = objGetStr(obj1, "currency", path1);
+    if (currency !== "AUD") {
+        throw new Error(`Currently, all currencies must be AUD. ${path}`);
+    }
+
     const transactions = await (async ()=>{
         const NAME2 = "transactions.json";
         if (!dirContents.has(NAME2)) return [];
         const path2 = join(path, NAME2);
         const arr2 = await readJsonArrayFile(path2);
 
-        return arr2.map(t => {
-            if (!t || typeof t !== "object" || Array.isArray(t)) {
-                throw new Error(`${path2} array elements must be an objects.`);
-            }
-
-            const date = objGetStr(t, "date", path2);
-            return {
-                date,
-            };
-        });
+        return arr2.map(x => readTransaction(x, path2));
     })();
 
     return {
@@ -125,30 +147,36 @@ async function readTimeseriesFile(path: string): Promise<TimeseriesEntry[]> {
     return unsorted;
 }
 
+function readMarketEvent(obj: unknown, path: string): MarketEvent {
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) {
+        throw new Error(`Array elements must be objects. ${path}`);
+    }
+
+    const date = objGetStr(obj, "date", path);
+    const eventType = objGetStr(obj, "type", path);
+    if (eventType !== "ex-distribution") {
+        throw new Error(`Invalid event type '${eventType}'. ${path}`);
+    }
+    const valuePerUnit = objGetNum(obj, "valuePerUnit", path);
+
+    return {
+        date,
+        type: eventType,
+        valuePerUnit,
+    };
+}
 
 async function readMarketEvents(path: string): Promise<MarketEvent[]> {
-    const obj: unknown = await (async ()=>{
+    const arr = await (async ()=>{
         try {
-            return await readJsonObjectFile(path);
-        } catch {
+            return await readJsonArrayFile(path);
+        } catch (e) {
+            console.error(e);
             return null;
         }
     })();
-    if (!obj) return []; // No events
-
-    if (!isObjArray(obj)) {
-        throw new Error(`${path} root must be an array.`);
-    }
-
-    return obj.map(event => {
-        if (!("date" in event && typeof event.date === "string")) {
-            throw new Error(`${path} date must be a string.`);
-        }
-        const date = event.date;
-        return {
-            date,
-        };
-    });
+    if (!arr) return []; // No events
+    return arr.map(x => readMarketEvent(x, path));
 }
 
 
@@ -160,6 +188,11 @@ async function readMarketData(root: string): Promise<SingleAssetMarketData> {
         throw new Error(`${path1} id must be a string.`);
     }
     const id = obj1.id;
+
+    const currency = objGetStr(obj1, "currency", path1);
+    if (currency !== "AUD") {
+        throw new Error(`Currently, all currencies must be AUD. ${root}`);
+    }
 
     const path2 = join(root, "timeseries.csv");
     const timeseriesDaily = await readTimeseriesFile(path2);

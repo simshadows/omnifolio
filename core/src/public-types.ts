@@ -1,16 +1,29 @@
 /*
- * Filename: types.ts
+ * Filename: public-types.ts
  * Author:   simshadows <contact@simshadows.com>
  *
  * The core types of omnifolio-core
  */
 
-export interface Transaction {
+interface BaseTransaction {
     // TODO we should probably change this to a proper type
     date: string;
 
     // TODO: How to differentiate between transactions?
 }
+interface BuySellTransaction extends BaseTransaction {
+    asset: string;
+    qty: number;
+    pricePerUnit: number;
+    brokerage: number;
+}
+export interface BuyTransaction extends BuySellTransaction {
+    type: "buy";
+}
+export interface SellTransaction extends BuySellTransaction {
+    type: "sell";
+}
+export type Transaction = BuyTransaction | SellTransaction;
 
 export interface Account {
     id: string;
@@ -28,12 +41,17 @@ export interface TimeseriesEntry {
     value: number;
 };
 
-export interface MarketEvent {
+interface BaseMarketEvent {
     // TODO we should probably change this to a proper type
     date: string;
 
     // TODO: How to differentiate between events?
 }
+export interface ExDistributionEvent extends BaseMarketEvent {
+    type: "ex-distribution";
+    valuePerUnit: number;
+}
+export type MarketEvent = ExDistributionEvent;
 
 export interface SingleAssetMarketData {
     // Omnifolio will validate this for expected format.
