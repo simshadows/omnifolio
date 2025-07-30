@@ -17,6 +17,7 @@
   },
   "workspaces": [
     "cli",
-    "core"
+    "core",
+    "utils"
   ]
 }

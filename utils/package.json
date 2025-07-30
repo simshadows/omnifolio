@@ -1,0 +1,10 @@
+{
+  "name": "omnifolio-utils",
+  "author": "simshadows <contact@simshadows.com>",
+  "version": "0.0.0-dev",
+  "description": "Omnifolio's miscellaneous utilities package.",
+  "license": "AGPL-3.0-or-later",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

@@ -2,13 +2,11 @@
  * Filename: readfiles.ts
  * Author:   simshadows <contact@simshadows.com>
  *
- * Utilities to read the data files.
- *
  * NOTE: There's a lot of "Not allowed yet." here. I plan on coming around and
  * fixing those later.
  */
 
-import {open, readdir} from "node:fs/promises";
+import {readdir} from "node:fs/promises";
 import {join} from 'node:path';
 
 import {
@@ -19,27 +17,12 @@ import {
     type OmnifolioBundle,
 } from "omnifolio-core";
 
-import {jsonParse, isObjArray} from "./danger";
-
-const ENCODING = "utf8";
-
-async function readTextFile(path: string): Promise<string> {
-    let f;
-    try {
-        f = await open(path, "r");
-        return await f.readFile({encoding: ENCODING});
-    } finally {
-        await f?.close();
-    }
-}
-
-function csvParse(raw: string): string[][] {
-    const lines = raw.trim().split("\n");
-    return lines.map(s => s.trim().split(",").map(s2 => s2.trim()));
-}
-
-
-/*** ***/
+import {
+    isObjArray,
+    readCsvFile,
+    readJsonObjectFile,
+    readJsonArrayFile,
+} from "omnifolio-utils";
 
 
 /*
@@ -55,11 +38,7 @@ async function tryReadAccountNode(path: string): Promise<Account | null> {
     const NAME1 = "config.json";
     if (!dirContents.has(NAME1)) return null;
     const path1 = join(path, NAME1);
-    const raw1 = await readTextFile(path1);
-    const obj1: unknown = jsonParse(raw1);
-    if (!obj1 || typeof obj1 !== "object" || Array.isArray(obj1)) {
-        throw new Error(`${path1} root must be an object.`);
-    }
+    const obj1 = await readJsonObjectFile(path1);
 
     if (!("id" in obj1 && typeof obj1.id === "string")) {
         throw new Error(`${path1}: id must be a string.`);
@@ -75,11 +54,7 @@ async function tryReadAccountNode(path: string): Promise<Account | null> {
         const NAME2 = "transactions.json";
         if (!dirContents.has(NAME2)) return [];
         const path2 = join(path, NAME2);
-        const raw2 = await readTextFile(path2);
-        const arr2: unknown = jsonParse(raw2);
-        if (!arr2 || typeof arr2 !== "object" || !Array.isArray(arr2)) {
-            throw new Error(`${path2} root must be an array.`);
-        }
+        const arr2 = await readJsonArrayFile(path2);
 
         return arr2.map(t => {
             if (!t || typeof t !== "object" || Array.isArray(t)) {
@@ -131,8 +106,8 @@ async function readAccounts(path: string): Promise<Map<string, Account>> {
 /*** ***/
 
 
-function parseTimeseries(raw: string): TimeseriesEntry[] {
-    const unsorted: TimeseriesEntry[] = csvParse(raw).map(line => {
+function parseTimeseries(csvData: string[][]): TimeseriesEntry[] {
+    const unsorted: TimeseriesEntry[] = csvData.map(line => {
         const date = line[0];
         if (!date) {
             throw new Error("Blank date is not allowed.");
@@ -159,16 +134,15 @@ function parseTimeseries(raw: string): TimeseriesEntry[] {
 
 
 async function readMarketEvents(path: string): Promise<MarketEvent[]> {
-    const raw = await (async ()=>{
+    const obj: unknown = await (async ()=>{
         try {
-            return await readTextFile(path);
+            return await readJsonObjectFile(path);
         } catch {
             return null;
         }
     })();
-    if (!raw) return []; // No events
+    if (!obj) return []; // No events
 
-    const obj: unknown = jsonParse(raw);
     if (!isObjArray(obj)) {
         throw new Error(`${path} root must be an array.`);
     }
@@ -187,11 +161,7 @@ async function readMarketEvents(path: string): Promise<MarketEvent[]> {
 
 async function readMarketData(root: string): Promise<SingleAssetMarketData> {
     const path1 = join(root, "config.json");
-    const raw1 = await readTextFile(path1);
-    const obj1: unknown = jsonParse(raw1);
-    if (!obj1 || typeof obj1 !== "object" || Array.isArray(obj1)) {
-        throw new Error(`${path1} root must be an object.`);
-    }
+    const obj1 = await readJsonObjectFile(path1);
 
     if (!("id" in obj1 && typeof obj1.id === "string")) {
         throw new Error(`${path1} id must be a string.`);
@@ -199,9 +169,9 @@ async function readMarketData(root: string): Promise<SingleAssetMarketData> {
     const id = obj1.id;
 
     const path2 = join(root, "timeseries.csv");
-    const raw2 = await readTextFile(path2);
+    const csvData = await readCsvFile(path2);
 
-    const timeseriesDaily = parseTimeseries(raw2);
+    const timeseriesDaily = parseTimeseries(csvData);
 
     return {
         id,
@@ -238,13 +208,7 @@ async function readMarketDataRoot(root: string): Promise<Map<string, SingleAsset
 
 
 async function readOmnifolio(path: string): Promise<void> {
-    const raw = await readTextFile(path);
-
-    const obj: unknown = jsonParse(raw);
-
-    if (!obj || typeof obj !== "object" || Array.isArray(obj)) {
-        throw new Error("omnifolio.json root must be an object.");
-    }
+    const obj = await readJsonObjectFile(path);
 
     // This is just an initial sanity check to make sure we're reading
     // an Omnifolio data directory.

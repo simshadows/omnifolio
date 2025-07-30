@@ -21,6 +21,10 @@ const RAW_RUNTIME_STATE =
     {\
       "name": "omnifolio-core",\
       "reference": "workspace:core"\
+    },\
+    {\
+      "name": "omnifolio-utils",\
+      "reference": "workspace:utils"\
     }\
   ],\
   "enableTopLevelFallback": true,\
@@ -29,7 +33,8 @@ const RAW_RUNTIME_STATE =
   "fallbackExclusionList": [\
     ["omnifolio", ["workspace:."]],\
     ["omnifolio-cli", ["workspace:cli"]],\
-    ["omnifolio-core", ["workspace:core"]]\
+    ["omnifolio-core", ["workspace:core"]],\
+    ["omnifolio-utils", ["workspace:utils"]]\
   ],\
   "fallbackPool": [\
   ],\
@@ -199,6 +204,7 @@ const RAW_RUNTIME_STATE =
           ["@types/node", "npm:24.1.0"],\
           ["omnifolio-cli", "workspace:cli"],\
           ["omnifolio-core", "workspace:core"],\
+          ["omnifolio-utils", "workspace:utils"],\
           ["ts-node", "virtual:4627ed6ea0631f1433794ca9e1a3645803ec77c77518c4822e8b18e3db62647d0d1412141f427d39da231a3fb96358ae63fe05172a1a3213603f74da3e2cb1a4#npm:10.9.2"],\
           ["typescript", "patch:typescript@npm%3A5.8.3#optional!builtin<compat/typescript>::version=5.8.3&hash=5786d5"]\
         ],\
@@ -210,6 +216,15 @@ const RAW_RUNTIME_STATE =
         "packageLocation": "./core/",\
         "packageDependencies": [\
           ["omnifolio-core", "workspace:core"]\
+        ],\
+        "linkType": "SOFT"\
+      }]\
+    ]],\
+    ["omnifolio-utils", [\
+      ["workspace:utils", {\
+        "packageLocation": "./utils/",\
+        "packageDependencies": [\
+          ["omnifolio-utils", "workspace:utils"]\
         ],\
         "linkType": "SOFT"\
       }]\

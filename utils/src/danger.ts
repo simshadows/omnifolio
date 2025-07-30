@@ -21,9 +21,9 @@ export const jsonStringify = (x: unknown): string => JSON.stringify(x);
  * Still an open issue as of writing:
  * <https://github.com/microsoft/TypeScript/issues/17002>
  */
-//export function isUnknownArray(obj: unknown): obj is unknown[] {
-//    return Array.isArray(obj);
-//}
+export function isUnknownArray(obj: unknown): obj is unknown[] {
+    return Array.isArray(obj);
+}
 export function isObjArray(obj: unknown): obj is object[] {
     if (!Array.isArray(obj)) return false;
     for (const v of obj) {

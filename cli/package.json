@@ -10,6 +10,7 @@
   "dependencies": {
     "@types/node": "^24.1.0",
     "omnifolio-core": "workspace:core",
+    "omnifolio-utils": "workspace:utils",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
   }
